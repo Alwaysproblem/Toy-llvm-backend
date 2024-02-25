@@ -53,7 +53,7 @@ bash tools/build_clang.sh
   ```
 
 
-## Target Machine & registration
+## [Target Machine & registration](https://llvm.org/docs/WritingAnLLVMBackend.html#target-machine)
 
 - build and run
 
@@ -67,3 +67,12 @@ bash tools/build_clang.sh
   # ...
   ```
 
+## [Register Set and Register Classes](https://llvm.org/docs/WritingAnLLVMBackend.html#register-set-and-register-classes)
+
+you can apply the Ch3 patch to the llvm-project folder and see through the changes.
+
+```bash
+bash tools/apply_patch.sh -p Ch3
+```
+
+## Instruction Set

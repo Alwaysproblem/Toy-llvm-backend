@@ -1,0 +1,81 @@
+diff --git a/llvm/CMakeLists.txt b/llvm/CMakeLists.txt
+index 2b9315c22ed9..676732e2ec81 100644
+--- a/llvm/CMakeLists.txt
++++ b/llvm/CMakeLists.txt
+@@ -443,6 +443,7 @@ set(LLVM_ALL_TARGETS
+   WebAssembly
+   X86
+   XCore
++  Toy
+   )
+ 
+ # List of targets with JIT support:
+diff --git a/llvm/cmake/config-ix.cmake b/llvm/cmake/config-ix.cmake
+index b78c1b34ab8b..a01bccb0bb1c 100644
+--- a/llvm/cmake/config-ix.cmake
++++ b/llvm/cmake/config-ix.cmake
+@@ -496,6 +496,8 @@ elseif (LLVM_NATIVE_ARCH STREQUAL "m68k")
+   set(LLVM_NATIVE_ARCH M68k)
+ elseif (LLVM_NATIVE_ARCH MATCHES "loongarch")
+   set(LLVM_NATIVE_ARCH LoongArch)
++elseif (LLVM_NATIVE_ARCH MATCHES "toy")
++  set(LLVM_NATIVE_ARCH Toy)
+ else ()
+   message(FATAL_ERROR "Unknown architecture ${LLVM_NATIVE_ARCH}")
+ endif ()
+diff --git a/llvm/include/llvm/TargetParser/Triple.h b/llvm/include/llvm/TargetParser/Triple.h
+index 59513fa2f206..668a0832fbbf 100644
+--- a/llvm/include/llvm/TargetParser/Triple.h
++++ b/llvm/include/llvm/TargetParser/Triple.h
+@@ -105,6 +105,7 @@ public:
+     wasm64,         // WebAssembly with 64-bit pointers
+     renderscript32, // 32-bit RenderScript
+     renderscript64, // 64-bit RenderScript
++    toy,
+     ve,             // NEC SX-Aurora Vector Engine
+     LastArchType = ve
+   };
+diff --git a/llvm/lib/TargetParser/Triple.cpp b/llvm/lib/TargetParser/Triple.cpp
+index a68035989a93..584a9f701078 100644
+--- a/llvm/lib/TargetParser/Triple.cpp
++++ b/llvm/lib/TargetParser/Triple.cpp
+@@ -81,6 +81,7 @@ StringRef Triple::getArchTypeName(ArchType Kind) {
+   case wasm32:         return "wasm32";
+   case wasm64:         return "wasm64";
+   case x86:            return "i386";
++  case toy:            return "toy";
+   case x86_64:         return "x86_64";
+   case xcore:          return "xcore";
+   case xtensa:         return "xtensa";
+@@ -854,6 +855,7 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
+   case Triple::thumbeb:
+   case Triple::ve:
+   case Triple::xcore:
++  case Triple::toy:
+   case Triple::xtensa:
+     return Triple::ELF;
+ 
+@@ -1434,6 +1436,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
+   case llvm::Triple::thumbeb:
+   case llvm::Triple::wasm32:
+   case llvm::Triple::x86:
++  case llvm::Triple::toy:
+   case llvm::Triple::xcore:
+   case llvm::Triple::xtensa:
+     return 32;
+@@ -1524,6 +1527,7 @@ Triple Triple::get32BitArchVariant() const {
+   case Triple::thumb:
+   case Triple::thumbeb:
+   case Triple::wasm32:
++  case Triple::toy:
+   case Triple::x86:
+   case Triple::xcore:
+   case Triple::xtensa:
+@@ -1577,6 +1581,7 @@ Triple Triple::get64BitArchVariant() const {
+   case Triple::tce:
+   case Triple::tcele:
+   case Triple::xcore:
++  case Triple::toy:
+   case Triple::xtensa:
+     T.setArch(UnknownArch);
+     break;
