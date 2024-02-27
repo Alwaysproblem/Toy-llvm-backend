@@ -77,12 +77,40 @@ bash tools/build_clang.sh
   # ...
   ```
 
+### [Add the `LLVMInitializeToyTargetMC` function](https://pages.dogdog.run/toolchain/llvm_toy_riscv_backend.html#org000003f)
+
+`LLVMInitializeToyTargetMC` sets callback functions, which are called during initAsm via TheTarget's createXXX methods to initialize TheTarget's `MRI`, `MII`, `STI`, `AsmInfo`, and others.
+
+- **MRI (MCRegisterInfo):** Manages register numbers, names, and main information, primarily generated from `.td` files.
+- **MII (MCInstrInfo):** Manages instruction encodings, names, and main information, primarily generated from `.td` files.
+- **STI (MCSubtargetInfo):** Corresponds to subtarget information specified with `-mcpu`, `-mattr` during `llc` calls, using this info to initialize `STI`. Information is generated from `.td` files.
+- **AsmInfo (MCAsmInfo):** Contains asm file format information, such as the `#` symbol for comments.
+
+```bash
+bash tools/clean_llvm_branch.sh # Optional
+bash tools/build_llc.sh -p Ch3
+# ./llvm-project/build_clang/bin/clang --target=riscv64-unknown-gnu -march=rv32g examples/arith.c -c -emit-llvm -O0 -o arith.bc
+# ./llvm-project/llvm/build/bin/llc -debug -march=toy -filetype=asm arith.bc -o arith.S
+# ; ModuleID = '/root/Desktop/dockerVolumn/Toy-llvm-backend/llvm-project/llvm/.vscode/test/arith.bc'
+# source_filename = "/root/Desktop/dockerVolumn/Toy-llvm-backend/llvm-project/llvm/../../examples/arith.c"
+# target datalayout = "e-m:e-p:32:32-i64:64-n32-S128"
+# target triple = "riscv32-unknown-hurd-gnu"
+# ...
+# !0 = !{i32 1, !"wchar_size", i32 4}
+# !1 = !{i32 1, !"target-abi", !"ilp32d"}
+# !2 = !{i32 7, !"frame-pointer", i32 2}
+# !3 = !{i32 1, !"SmallDataLimit", i32 8}
+# !4 = !{!"clang version 16.0.6 (https://github.com/llvm/llvm-project.git 7cbf1a2591520c2491aa35339f227775f4d3adf6)"}
+# Args: /root/Desktop/dockerVolumn/Toy-llvm-backend/llvm-project/llvm/build/bin/llc -debug -march=toy -filetype=asm /root/Desktop/dockerVolumn/Toy-llvm-backend/llvm-project/llvm/.vscode/test/arith.bc -o /root/Desktop/dockerVolumn/Toy-llvm-backend/llvm-project/llvm/.vscode/test/arith.S 
+# llc: error: target does not support generation of this file type <- The error occurs because a SelectionDAGISel instance has not been specified for Toy. SelectionDAGISel is the entry point for the entire instruction selection (isel) process.
+```
+
 ## [Register Set and Register Classes](https://llvm.org/docs/WritingAnLLVMBackend.html#register-set-and-register-classes)
 
 you can apply the Ch3 patch to the llvm-project folder and see through the changes.
 
 ```bash
-bash tools/apply_patch.sh -p Ch3
+bash tools/apply_patch.sh -p Ch4
 ```
 
 ## Instruction Set

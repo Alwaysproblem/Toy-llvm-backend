@@ -40,7 +40,7 @@ if [[ -z ${_ASSEMBLE} ]]; then
     ${LLVM_WORKSPACK}/../build_clang/bin/clang --target=riscv64-unknown-gnu -march=rv32g ${LLVM_WORKSPACK}/../../examples/${EXAMPLE_NAME}.c -c -emit-llvm -O0 -o ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.bc
     ${LLVM_WORKSPACK}/../build_clang/bin/llvm-dis ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.bc -o ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.ll
     cat ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.ll
-    ${WORKSPACK}/build/bin/llc -debug -march=toy -filetype=asm ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.bc -o ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.S 
+    ${LLVM_WORKSPACK}/build/bin/llc -debug -march=toy -filetype=asm ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.bc -o ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.S 
 else
     ${LLVM_WORKSPACK}/../build_clang/bin/clang --target=riscv64-unknown-gnu -march=rv32g ${LLVM_WORKSPACK}/../../examples/${EXAMPLE_NAME}.c -c -emit-llvm -O0 -o ${LLVM_WORKSPACK}/.vscode/test/${EXAMPLE_NAME}.s -S
 fi

@@ -95,7 +95,7 @@ index 000000000000..f818cca61438
 +)
 diff --git a/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp
 new file mode 100644
-index 000000000000..f095c909ec76
+index 000000000000..cbe3819e8115
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp
 @@ -0,0 +1,14 @@
@@ -104,18 +104,18 @@ index 000000000000..f095c909ec76
 +
 +using namespace llvm;
 +
-+Target &llvm::getTheTOYTarget() {
++Target &llvm::getTheToyTarget() {
 +  static Target TheTOYTarget;
 +  return TheTOYTarget;
 +}
 +
 +extern "C" void LLVMInitializeToyTargetInfo() {
 +  RegisterTarget<Triple::toy, /*HasJIT=*/true> X(
-+      getTheTOYTarget(), "toy", "TOY Backend for riscv (32-bit) [experimental]", "TOY");
++      getTheToyTarget(), "toy", "TOY Backend for riscv (32-bit) [experimental]", "TOY");
 +}
 diff --git a/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h
 new file mode 100644
-index 000000000000..20e06963d901
+index 000000000000..2d41802ae53c
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h
 @@ -0,0 +1,12 @@
@@ -126,7 +126,7 @@ index 000000000000..20e06963d901
 +
 +class Target;
 +
-+Target &getTheTOYTarget();
++Target &getTheToyTarget();
 +
 +} // namespace llvm
 +
@@ -140,7 +140,7 @@ index 000000000000..dea585804f8f
 +include "llvm/Target/Target.td"
 diff --git a/llvm/lib/Target/Toy/ToyAsmPrinter.cpp b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
 new file mode 100644
-index 000000000000..e743548de051
+index 000000000000..16d79ccc8b50
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
 @@ -0,0 +1,17 @@
@@ -159,7 +159,7 @@ index 000000000000..e743548de051
 +StringRef ToyAsmPrinter::getPassName() const { return "Toy Assembly Printer"; }
 +
 +extern "C" void LLVMInitializeToyAsmPrinter() {
-+  RegisterAsmPrinter<ToyAsmPrinter> X(getTheTOYTarget());
++  RegisterAsmPrinter<ToyAsmPrinter> X(getTheToyTarget());
 +}
 diff --git a/llvm/lib/Target/Toy/ToyAsmPrinter.h b/llvm/lib/Target/Toy/ToyAsmPrinter.h
 new file mode 100644
@@ -189,7 +189,7 @@ index 000000000000..585bcfd60580
 +#endif // LLVM_LIB_TARGET_TOY_ASMPRINTER_H
 diff --git a/llvm/lib/Target/Toy/ToyTargetMachine.cpp b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
 new file mode 100644
-index 000000000000..3e10a23705c6
+index 000000000000..5fc4849956cb
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
 @@ -0,0 +1,52 @@
@@ -204,7 +204,7 @@ index 000000000000..3e10a23705c6
 +using namespace llvm;
 +
 +extern "C" void LLVMInitializeToyTarget() {
-+  RegisterTargetMachine<TOYTargetMachine> X(getTheTOYTarget());
++  RegisterTargetMachine<TOYTargetMachine> X(getTheToyTarget());
 +}
 +
 +static StringRef computeDataLayout(const Triple &TT, StringRef CPU,
