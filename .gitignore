@@ -1,2 +1,7 @@
 .vscode
 build
+*.bc
+*.ll
+*.elf
+*.s
+*.o

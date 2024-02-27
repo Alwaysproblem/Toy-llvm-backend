@@ -11,6 +11,16 @@ This example is inspired by:
 
 ## Getting started
 
+### See through code within llvm directory
+
+- create soft link in `llvm/.vscode`
+
+
+  ```bash
+  cd llvm-project/llvm/.vscode
+  ln -s ../../../scripts_in_llvm/run_with_llc.sh run_with_llc.sh
+  ```
+
 ### Clone this repository:
 
 ```sh
