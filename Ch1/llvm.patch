@@ -96,14 +96,14 @@ index 000000000000..f095c909ec76
 +
 +using namespace llvm;
 +
-+Target &llvm::getTheTOYTarget() {
++Target &llvm::getTheToyTarget() {
 +  static Target TheTOYTarget;
 +  return TheTOYTarget;
 +}
 +
 +extern "C" void LLVMInitializeToyTargetInfo() {
 +  RegisterTarget<Triple::toy, /*HasJIT=*/true> X(
-+      getTheTOYTarget(), "toy", "TOY Backend for riscv (32-bit) [experimental]", "TOY");
++      getTheToyTarget(), "toy", "TOY Backend for riscv (32-bit) [experimental]", "TOY");
 +}
 diff --git a/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h
 new file mode 100644
@@ -118,7 +118,7 @@ index 000000000000..20e06963d901
 +
 +class Target;
 +
-+Target &getTheTOYTarget();
++Target &getTheToyTarget();
 +
 +} // namespace llvm
 +
