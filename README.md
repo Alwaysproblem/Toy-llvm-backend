@@ -70,7 +70,7 @@ bash tools/build_clang.sh
   ```bash
   bash tools/clean_llvm_branch.sh # Optional
   bash tools/build_llc.sh -p Ch2
-  ./llvm-project/build_clang/bin/clang --target=riscv64-unknown-gnu -march=rv32g examples/arith.cpp -c -emit-llvm -O0 -o arith.bc
+  ./llvm-project/build_clang/bin/clang --target=riscv64-unknown-gnu -march=rv32g examples/arith.c -c -emit-llvm -O0 -o arith.bc
   ./llvm-project/llvm/build/bin/llc -debug -march=toy -filetype=asm arith.bc -o arith.S
   # Args: ./build/bin/llc -debug -march=toy -filetype=asm arith.bc -o arith.S 
   # llc: /root/Desktop/dockerVolumn/Toy-llvm-backend/llvm-project/llvm/lib/CodeGen/LLVMTargetMachine.cpp:42: void llvm::LLVMTargetMachine::initAsmInfo(): Assertion 'MRI && "Unable to create reg info"' failed.
