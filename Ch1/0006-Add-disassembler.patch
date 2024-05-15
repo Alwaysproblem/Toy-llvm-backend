@@ -1,0 +1,194 @@
+diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
+index e3178873c088..c78ec765b505 100644
+--- a/llvm/lib/Target/Toy/CMakeLists.txt
++++ b/llvm/lib/Target/Toy/CMakeLists.txt
+@@ -4,8 +4,8 @@ set(LLVM_TARGET_DEFINITIONS Toy.td)
+ 
+ tablegen(LLVM ToyGenAsmMatcher.inc -gen-asm-matcher)
+ tablegen(LLVM ToyGenAsmWriter.inc -gen-asm-writer)
+-tablegen(LLVM ToyGenMCCodeEmitter.inc -gen-emitter)
+ tablegen(LLVM ToyGenDisassemblerTables.inc -gen-disassembler)
++tablegen(LLVM ToyGenMCCodeEmitter.inc -gen-emitter)
+ tablegen(LLVM ToyGenInstrInfo.inc -gen-instr-info)
+ tablegen(LLVM ToyGenRegisterInfo.inc -gen-register-info)
+ tablegen(LLVM ToyGenSubtargetInfo.inc -gen-subtarget)
+@@ -20,5 +20,6 @@ add_llvm_target(ToyCodeGen
+   )
+   
+ add_subdirectory(AsmParser)
++add_subdirectory(Disassembler)
+ add_subdirectory(TargetInfo)
+ add_subdirectory(MCTargetDesc)
+diff --git a/llvm/lib/Target/Toy/Disassembler/CMakeLists.txt b/llvm/lib/Target/Toy/Disassembler/CMakeLists.txt
+new file mode 100644
+index 000000000000..e4dbe19d19e9
+--- /dev/null
++++ b/llvm/lib/Target/Toy/Disassembler/CMakeLists.txt
+@@ -0,0 +1,13 @@
++add_llvm_component_library(LLVMToyDisassembler
++  ToyDisassembler.cpp
++
++  LINK_COMPONENTS
++  MC
++  MCDisassembler
++  Support
++  ToyDesc
++  ToyInfo
++
++  ADD_TO_COMPONENT
++  Toy
++  )
+diff --git a/llvm/lib/Target/Toy/Disassembler/ToyDisassembler.cpp b/llvm/lib/Target/Toy/Disassembler/ToyDisassembler.cpp
+new file mode 100644
+index 000000000000..d98fbbb4e268
+--- /dev/null
++++ b/llvm/lib/Target/Toy/Disassembler/ToyDisassembler.cpp
+@@ -0,0 +1,110 @@
++//===-- ToyDisassembler.cpp - Disassembler for Toy --------------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "TargetInfo/ToyTargetInfo.h"
++#include "llvm/MC/MCDecoderOps.h"
++#include "llvm/MC/MCDisassembler/MCDisassembler.h"
++#include "llvm/MC/MCInst.h"
++#include "llvm/MC/MCSubtargetInfo.h"
++#include "llvm/MC/TargetRegistry.h"
++#include "llvm/Support/MathExtras.h"
++#include <cassert>
++#include <cstdint>
++
++using namespace llvm;
++
++#define DEBUG_TYPE "Toy-disassembler"
++
++using DecodeStatus = MCDisassembler::DecodeStatus;
++
++namespace {
++
++class ToyDisassembler : public MCDisassembler {
++public:
++  ToyDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx)
++      : MCDisassembler(STI, Ctx) {}
++  ~ToyDisassembler() override = default;
++
++  DecodeStatus getInstruction(MCInst &instr, uint64_t &Size,
++                              ArrayRef<uint8_t> Bytes, uint64_t Address,
++                              raw_ostream &CStream) const override;
++};
++
++} // end anonymous namespace
++
++static MCDisassembler *createToyDisassembler(const Target &T,
++                                              const MCSubtargetInfo &STI,
++                                              MCContext &Ctx) {
++  return new ToyDisassembler(STI, Ctx);
++}
++
++extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyDisassembler() {
++  // Register the disassembler.
++  TargetRegistry::RegisterMCDisassembler(getTheToyTarget(),
++                                         createToyDisassembler);
++}
++
++static const uint16_t GPRDecoderTable[] = {
++    Toy::ZERO,
++    Toy::RA,
++    Toy::SP,
++    0,
++    0,
++    Toy::T0,
++    Toy::T1,
++    Toy::T2,
++    Toy::S0,
++    Toy::S1,
++    Toy::A0,
++    Toy::A1,
++    Toy::A2,
++    Toy::A3,
++    Toy::A4,
++    Toy::A5,
++    Toy::A6,
++    Toy::A7,
++};
++
++static DecodeStatus DecodeGPRRegisterClass(MCInst &Inst, uint64_t RegNo,
++                                           uint64_t Address,
++                                           const void *Decoder) {
++  if (RegNo > 31)
++    return MCDisassembler::Fail;
++
++  unsigned Register = GPRDecoderTable[RegNo];
++  Inst.addOperand(MCOperand::createReg(Register));
++  return MCDisassembler::Success;
++}
++
++#include "ToyGenDisassemblerTables.inc"
++
++DecodeStatus ToyDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
++                                              ArrayRef<uint8_t> Bytes,
++                                              uint64_t Address,
++                                              raw_ostream &CS) const {
++  // Instruction size is always 32 bit.
++  if (Bytes.size() < 4) {
++    Size = 0;
++    return MCDisassembler::Fail;
++  }
++  Size = 4;
++
++  // Construct the instruction.
++  // uint32_t Inst = 0;
++  // for (uint32_t I = 0; I < Size; ++I)
++  //   Inst = (Inst << 8) | Bytes[I];
++  uint32_t Inst = support::endian::read32le(Bytes.data());
++
++  if (decodeInstruction(DecoderTableToy32, MI, Inst, Address, this, STI) !=
++      MCDisassembler::Success) {
++    return MCDisassembler::Fail;
++  }
++  // return MCDisassembler::Fail;
++  return MCDisassembler::Success;
++}
+diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
+index 60e02d1a4397..7599cc5d30ba 100644
+--- a/llvm/lib/Target/Toy/Toy.td
++++ b/llvm/lib/Target/Toy/Toy.td
+@@ -37,6 +37,7 @@ def ToyAsmParser : AsmParser;
+ 
+ def Toy : Target {
+   let InstructionSet = ToyInstrInfo;
++  let AssemblyParsers  = [ToyAsmParser];
+ }
+ 
+ def : ProcessorModel<"cpu-rv32", NoSchedModel, []>;
+diff --git a/llvm/lib/Target/Toy/ToyInstrFormats.td b/llvm/lib/Target/Toy/ToyInstrFormats.td
+index 12497a1a4160..11d95598beb4 100644
+--- a/llvm/lib/Target/Toy/ToyInstrFormats.td
++++ b/llvm/lib/Target/Toy/ToyInstrFormats.td
+@@ -25,17 +25,19 @@
+ class ToyInst<dag outs, dag ins, string asm, list<dag> pattern>: Instruction
+ {
+   let Namespace = "Toy";
++  let Size = 4; // this will autogen the DecoderTableToy32
+ 
+   let OutOperandList = outs;
+   let InOperandList = ins;
+   let AsmString = asm;
+   let Pattern = pattern;
+ 
+-  let DecoderNamespace = "Toy";
+-
+   field bits<32> Inst;
++  bits<32> SoftFail = 0;
+   bits<7> Opcode = 0;
+   let Inst{6-0} = Opcode;
++
++  let DecoderNamespace = "Toy";
+ }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
