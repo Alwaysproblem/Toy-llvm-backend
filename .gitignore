@@ -5,3 +5,4 @@ build
 *.elf
 *.s
 *.o
+.cache
