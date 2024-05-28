@@ -1,0 +1,107 @@
+diff --git a/llvm/lib/Target/Toy/ToyFrameLowering.cpp b/llvm/lib/Target/Toy/ToyFrameLowering.cpp
+index fc0a47c667bd..e5db0f303979 100644
+--- a/llvm/lib/Target/Toy/ToyFrameLowering.cpp
++++ b/llvm/lib/Target/Toy/ToyFrameLowering.cpp
+@@ -7,21 +7,64 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "ToyFrameLowering.h"
++#include "MCTargetDesc/ToyMCTargetDesc.h"
+ #include "ToyRegisterInfo.h"
++#include "ToySubtarget.h"
+ #include "llvm/CodeGen/MachineBasicBlock.h"
++#include "llvm/CodeGen/MachineInstrBuilder.h"
+ #include "llvm/CodeGen/MachineModuleInfo.h"
+ #include "llvm/Support/Alignment.h"
++#include <llvm/CodeGen/MachineFrameInfo.h>
++#include <llvm/CodeGen/MachineFunction.h>
++#include <llvm/MC/MCInstrInfo.h>
+ 
+ using namespace llvm;
+ 
+-ToyFrameLowering::ToyFrameLowering()
+-    : TargetFrameLowering(TargetFrameLowering::StackGrowsDown, Align(8), 0,
+-                          Align(8), false /* StackRealignable */) {}
++ToyFrameLowering::ToyFrameLowering(ToySubtarget &STI)
++    : TargetFrameLowering(TargetFrameLowering::StackGrowsDown, Align(16), 0,
++                          Align(16), false /* StackRealignable */),
++      STI(STI){};
+ 
+ void ToyFrameLowering::emitPrologue(MachineFunction &MF,
+-                                    MachineBasicBlock &MBB) const {}
++                                    MachineBasicBlock &MBB) const {
++  auto MBBI = MBB.begin();
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++  const ToyInstrInfo &TII =
++      *static_cast<const ToyInstrInfo *>(STI.getInstrInfo());
++  DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
++  uint64_t StackSize = MFI.getStackSize() + MFI.getOffsetAdjustment();
++
++  if (StackSize == 0 && !MFI.adjustsStack())
++    return;
++
++  BuildMI(MBB, MBBI, DL, TII.get(Toy::ADDI), Toy::SP)
++      .addReg(Toy::SP)
++      .addImm(-StackSize);
++}
+ 
+ void ToyFrameLowering::emitEpilogue(MachineFunction &MF,
+-                                    MachineBasicBlock &MBB) const {}
++                                    MachineBasicBlock &MBB) const {
++  MachineBasicBlock::iterator MBBI = MBB.getFirstTerminator();
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++  const ToyInstrInfo &TII =
++      *static_cast<const ToyInstrInfo *>(STI.getInstrInfo());
++  DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
++  uint64_t StackSize = MFI.getStackSize() + MFI.getOffsetAdjustment();
++
++  if (StackSize == 0 && !MFI.adjustsStack())
++    return;
++  BuildMI(MBB, MBBI, DL, TII.get(Toy::ADDI), Toy::SP)
++      .addReg(Toy::SP)
++      .addImm(StackSize);
++}
+ 
+ bool ToyFrameLowering::hasFP(const MachineFunction &MF) const { return false; }
++
++void ToyFrameLowering::determineCalleeSaves(MachineFunction &MF,
++                                            BitVector &SavedRegs,
++                                            RegScavenger *RS) const {
++  TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
++  if (MF.getFrameInfo().hasCalls()) {
++    SavedRegs.set(Toy::RA);
++  }
++}
+diff --git a/llvm/lib/Target/Toy/ToyFrameLowering.h b/llvm/lib/Target/Toy/ToyFrameLowering.h
+index 7b11b7dad071..b21668200d0c 100644
+--- a/llvm/lib/Target/Toy/ToyFrameLowering.h
++++ b/llvm/lib/Target/Toy/ToyFrameLowering.h
+@@ -17,12 +17,16 @@ class ToyTargetMachine;
+ class ToySubtarget;
+ 
+ class ToyFrameLowering : public TargetFrameLowering {
++  ToySubtarget &STI;
++
+ public:
+-  ToyFrameLowering();
++  ToyFrameLowering(ToySubtarget &STI);
+ 
+   void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+   void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+   bool hasFP(const MachineFunction &MF) const override;
++  void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
++                            RegScavenger *RS) const override;
+ };
+ } // end namespace llvm
+ 
+diff --git a/llvm/lib/Target/Toy/ToySubtarget.cpp b/llvm/lib/Target/Toy/ToySubtarget.cpp
+index 4ca407a9aa0e..a56cc5425425 100644
+--- a/llvm/lib/Target/Toy/ToySubtarget.cpp
++++ b/llvm/lib/Target/Toy/ToySubtarget.cpp
+@@ -29,4 +29,5 @@ void ToySubtarget::anchor() {}
+ ToySubtarget::ToySubtarget(const Triple &TT, const std::string &CPU,
+                            const std::string &FS, const TargetMachine &TM)
+     : ToyGenSubtargetInfo(TT, CPU, /*TuneCPU*/ CPU, FS), InstrInfo(*this),
+-      TLInfo(TM, *this), FrameLowering(), RegisterInfo(*this, getHwMode()) {}
++      TLInfo(TM, *this), FrameLowering(*this),
++      RegisterInfo(*this, getHwMode()) {}
