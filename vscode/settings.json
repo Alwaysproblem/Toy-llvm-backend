@@ -8,7 +8,45 @@
   "cmake.configureArgs": [
     "-Wno-dev",
     "-DCMAKE_BUILD_TYPE=Debug",
+    // "-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=Toy",
     "-DLLVM_TARGETS_TO_BUILD=Toy",
-    "-DLLVM_PARALLEL_LINK_JOBS=4"
-  ]
+    // "-DLLVM_PARALLEL_LINK_JOBS=8",
+    // "-DLLVM_OPTIMIZED_TABLEGEN=On",
+    "-DLLVM_BUILD_TOOLS=On",
+    // "-DLLVM_TARGETS_TO_BUILD=X86",
+    // "-DLLVM_ENABLE_PROJECTS=clang;libcxx;libcxxabi"
+  ],
+  "files.associations": {
+    "*.py": "python",
+    "*.mmd": "mermaid",
+    "*.dockfile": "dockerfile",
+    ".style.yapf": "ini",
+    "*.inc": "cpp",
+    "*.pir": "mlir",
+    "optional": "cpp"
+  },
+  "clangd.path": "/root/.local/bin/clangd",
+  "clangd.arguments": [
+    "-j", "4",
+    "--log=error",
+    // "--pch-storage=disk",
+    // "--clang-tidy",
+    "--compile-commands-dir=./build"
+  ],
+  // "cmake.environment": {
+  //   "LD_LIBRARY_PATH": "/root/miniconda3/envs/mlir/x86_64-conda-linux-gnu/lib:${env.LD_LIBRARY_PATH}"
+  // },
+  // "C_Cpp.clang_format_path": "/usr/bin/clang-format",
+  // "C_Cpp.codeAnalysis.clangTidy.path": "${env.HOME}/miniconda3/envs/mlir/bin/clang-tidy",
+  // "cmakeFormat.exePath": "/root/miniconda3/envs/mlir/bin/cmake-format",
+  // "C_Cpp.errorSquiggles": "enabled",
+  // "C_Cpp.clang_format_sortIncludes": true,
+  // "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+  // "C_Cpp.codeAnalysis.clangTidy.codeAction.formatFixes": true,
+  // "C_Cpp.codeAnalysis.clangTidy.useBuildPath": true,
+  // "C_Cpp.codeAnalysis.clangTidy.args": [
+  //   "-p",
+  //   "${workspaceFolder}/build/compile_commands.json"
+  // ],
+  // "cmakeFormat.args": ["--config=${workspaceFolder}/.cmake-lint.yaml"],
 }

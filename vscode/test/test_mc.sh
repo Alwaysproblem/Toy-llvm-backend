@@ -1,0 +1,1 @@
+echo 'xori %r1,%r2,%r3' | ./build/bin/llvm-mc --triple toy --show-encoding
