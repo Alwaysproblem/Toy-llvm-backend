@@ -4,7 +4,7 @@ APPLY_PATCH=""
 
 function usage
 {
-    echo "Usage: $0 [--apply-patch]"
+    echo "Usage: $0 [-p/--apply-patch]"
     echo ""
     echo "  --apply-patch  apply the patch in directory to the LLVM source code"
 }

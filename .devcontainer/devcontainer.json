@@ -1,0 +1,73 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/anaconda
+{
+  "remoteUser": "root",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/root/Desktop/dockerVolumn/${localWorkspaceFolderBasename},type=bind",
+  "workspaceFolder": "/root/Desktop/dockerVolumn/${localWorkspaceFolderBasename}",
+  "name": "llvm-backend",
+  "build": {
+    "context": ".",
+    "dockerfile": "Dockerfile",
+    "options": [
+    ]
+    // "args": {
+    //   "MYARGFROMENVVAR": "${localEnv:VARIABLE_NAME}"
+    // }
+  },
+  // Features to add to the dev container. More info: https://containers.dev/features.
+  // "features": {},
+  // Use 'forwardPorts' to make a list of ports inside the container available locally.
+  // "forwardPorts": [],
+  // Use 'postCreateCommand' to run commands after the container is created.
+  "postCreateCommand": "bash .devcontainer/post_commands.sh",
+  // Configure tool-specific properties.
+  // "customizations": {},
+  // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+  // "remoteUser": "root"
+  "privileged": true,
+  // "capAdd": ["SYS_PTRACE"],
+  // "mounts": [
+  //   {
+  //     "source": "/data/rech/yongxiy/Desktop/dockerVolumn",
+  //     "target": "/root/Desktop/dockerVolumn",
+  //     "type": "volume"
+  //   }
+  // ],
+  "runArgs": [
+    // "--cap-add=SYS_PTRACE",
+    // "--security-opt",
+    // "seccomp=unconfined",
+    "--name",
+    // "${localEnv:USER}-tvm",
+    "yyx-llvm-backend",
+    "-v",
+    "/data/rech/yongxiy/Desktop/dockerVolumn:/root/Desktop/dockerVolumn",
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "MS-CEINTL.vscode-language-pack-zh-hans",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "GitHub.vscode-pull-request-github",
+        "eamodio.gitlens",
+        "cheshirekow.cmake-format",
+        "josetr.cmake-language-support-vscode",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-dotnettools.vscode-dotnet-runtime",
+        "streetsidesoftware.code-spell-checker",
+        "eeyore.yapf",
+        "bierner.markdown-mermaid",
+        "bierner.markdown-preview-github-styles",
+        "yzhang.markdown-all-in-one",
+        "ms-python.pylint",
+        "mutantdino.resourcemonitor",
+        "ms-python.debugpy",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+      ]
+    }
+  }
+}
