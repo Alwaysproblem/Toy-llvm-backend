@@ -2,8 +2,8 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/anaconda
 {
   "remoteUser": "root",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/root/Desktop/dockerVolumn/${localWorkspaceFolderBasename},type=bind",
-  "workspaceFolder": "/root/Desktop/dockerVolumn/${localWorkspaceFolderBasename}",
+  // "workspaceMount": "source=${localWorkspaceFolder},target=/root/Desktop/dockerVolumn/${localWorkspaceFolderBasename},type=bind",
+  // "workspaceFolder": "/root/Desktop/dockerVolumn/${localWorkspaceFolderBasename}",
   "name": "llvm-backend",
   "build": {
     "context": ".",
@@ -58,15 +58,11 @@
         "llvm-vs-code-extensions.vscode-clangd",
         "ms-dotnettools.vscode-dotnet-runtime",
         "streetsidesoftware.code-spell-checker",
-        "eeyore.yapf",
         "bierner.markdown-mermaid",
         "bierner.markdown-preview-github-styles",
         "yzhang.markdown-all-in-one",
-        "ms-python.pylint",
         "mutantdino.resourcemonitor",
-        "ms-python.debugpy",
-        "ms-python.python",
-        "ms-python.vscode-pylance",
+        "ms-vscode.hexeditor"
       ]
     }
   }
