@@ -1,0 +1,16 @@
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
+index d11fa64ebfc2..c707747debe6 100644
+--- a/llvm/lib/Target/Toy/ToyInstrInfo.td
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
+@@ -127,3 +127,11 @@ def FSGNJD : InstR<0b1010011, 0b0010001, 0b000,
+ 
+ def FMVD : ToyPseudo<(outs FPR64:$rd), (ins FPR64:$rs1),"", []>,
+           PseudoInstExpansion<(FSGNJD FPR64:$rd, FPR64:$rs1, FPR64:$rs1)>;
++
++def SLT : InstR<0b0110011, 0b0000000, 0b010, (outs GPR:$rd),(ins GPR:$rs1, GPR:$rs2),
++           "slt\t$rd, $rs1, $rs2", []>;
++
++def : Pat<(setgt GPR:$lhs, GPR:$rhs), (SLT GPR:$rhs, GPR:$lhs)>;
++def : Pat<(setlt GPR:$lhs, GPR:$rhs), (SLT GPR:$lhs, GPR:$rhs)>;
++def : Pat<(seteq GPR:$lhs, GPR:$rhs), (SLT (XOR GPR:$lhs, GPR:$rhs), (ADDI ZERO, 1))>;
++def : Pat<(setne GPR:$lhs, GPR:$rhs), (SLT ZERO, (XOR GPR:$lhs, GPR:$rhs))>;
