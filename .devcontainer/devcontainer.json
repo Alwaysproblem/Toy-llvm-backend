@@ -41,7 +41,7 @@
     // "${localEnv:USER}-tvm",
     "yyx-llvm-backend",
     "-v",
-    "/data/rech/yongxiy/Desktop/dockerVolumn:/root/Desktop/dockerVolumn",
+    "/home/yongxiy/Desktop/dockerVolumn:/root/Desktop/dockerVolumn",
   ],
   "customizations": {
     "vscode": {

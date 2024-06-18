@@ -1,9 +1,7 @@
-int foo(int a, int b) {
-    return a * b + a + b;
-}
 
-int main(){
-    int a = 3, b = 1;
-    int c = foo(a, b);
-    return c;
+float foo(){
+  float a = 10;
+  float b = 20;
+  float c = a * b + 30;
+  return c;
 }

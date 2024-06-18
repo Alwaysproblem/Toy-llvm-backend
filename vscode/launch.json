@@ -11,7 +11,7 @@
       "request": "launch",
       // Resolved by CMake Tools:
       "program": "${command:cmake.launchTargetPath}",
-      "args": [".vscode/test/call.ll", "--debug"],
+      "args": [".vscode/test/add.ll"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [
