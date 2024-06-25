@@ -9,11 +9,11 @@
     "-Wno-dev",
     "-DCMAKE_BUILD_TYPE=Debug",
     // "-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=Toy",
-    // "-DLLVM_TARGETS_TO_BUILD=Toy",
+    "-DLLVM_TARGETS_TO_BUILD=Toy",
     "-DLLVM_PARALLEL_LINK_JOBS=8",
     // "-DLLVM_OPTIMIZED_TABLEGEN=On",
     "-DLLVM_BUILD_TOOLS=On",
-    "-DLLVM_TARGETS_TO_BUILD=X86",
+    // "-DLLVM_TARGETS_TO_BUILD=X86",
     // "-DLLVM_ENABLE_PROJECTS=clang;libcxx;libcxxabi"
   ],
   "files.associations": {
@@ -27,11 +27,11 @@
   },
   "clangd.path": "/root/.local/bin/clangd",
   "clangd.arguments": [
-    "-j", "4",
+    "-j", "8",
     "--log=error",
     // "--pch-storage=disk",
     // "--clang-tidy",
-    "--compile-commands-dir=./build"
+    "--compile-commands-dir=./build",
   ],
   // "cmake.environment": {
   //   "LD_LIBRARY_PATH": "/root/miniconda3/envs/mlir/x86_64-conda-linux-gnu/lib:${env.LD_LIBRARY_PATH}"

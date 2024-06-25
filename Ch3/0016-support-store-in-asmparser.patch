@@ -1,0 +1,247 @@
+diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
+index 2b1d4781eb16..a84bd60ae6ac 100644
+--- a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
++++ b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
+@@ -8,9 +8,13 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
++#include "MCTargetDesc/ToyBaseInfo.h"
+ #include "MCTargetDesc/ToyInstPrinter.h"
++#include "MCTargetDesc/ToyMCExpr.h"
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
+ #include "TargetInfo/ToyTargetInfo.h"
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/Statistic.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/MC/MCAsmMacro.h"
+ #include "llvm/MC/MCExpr.h"
+@@ -168,6 +172,8 @@ class ToyAsmParser : public MCTargetAsmParser {
+                      bool RestoreOnFailure);
+   bool parseOperand(OperandVector &Operands, StringRef Mnemonic);
+ 
++  bool parseScaledRegister(OperandVector &Operands);
++
+   bool MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
+                                OperandVector &Operands, MCStreamer &Out,
+                                uint64_t &ErrorInfo,
+@@ -203,12 +209,20 @@ bool ToyAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
+     }
+ 
+     // Read the following operands.
+-    while (getLexer().is(AsmToken::Comma)) {
+-      Parser.Lex();
+-      if (parseOperand(Operands, Name)) {
+-        return Error(getLexer().getLoc(), "expected operand");
++    while (getLexer().is(AsmToken::Comma) || getLexer().is(AsmToken::LParen) ||
++           getLexer().is(AsmToken::Minus)) {
++      if (getLexer().is(AsmToken::Comma))
++        Parser.Lex();
++      if (getLexer().is(AsmToken::LParen)) {
++        if (parseScaledRegister(Operands))
++          return Error(getLexer().getLoc(), "expected scaled register operand");
++      } else {
++        if (parseOperand(Operands, Name)) {
++          return Error(getLexer().getLoc(), "expected operand");
++        }
+       }
+     }
++
+     if (getLexer().isNot(AsmToken::EndOfStatement))
+       return Error(getLexer().getLoc(), "unexpected token in argument list");
+   }
+@@ -231,11 +245,59 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
+   }
+ 
+   // Could be immediate or address.
+-  if (Parser.getTok().is(AsmToken::Integer)) {
++  if (Parser.getTok().is(AsmToken::Integer) ||
++      Parser.getTok().is(AsmToken::Minus) ||
++      Parser.getTok().is(AsmToken::Percent)) {
+     SMLoc StartLoc = Parser.getTok().getLoc();
+     const MCExpr *Expr;
+-    if (Parser.parseExpression(Expr))
+-      return true;
++
++    if (Parser.getTok().is(AsmToken::Minus)) {
++      if (getLexer()
++              .peekTok(/*ShouldSkipSpace=*/false)
++              .isNot(AsmToken::Integer)) {
++        return Error(StartLoc, "expected integer after '-'");
++      }
++      if (Parser.parseExpression(Expr))
++        return true;
++    } else if (Parser.getTok().is(AsmToken::Percent)) {
++      getLexer().Lex(); // Eat the percent token.
++      if (getLexer().isNot(AsmToken::Identifier)) {
++        return Error(StartLoc, "expected identifier after '%'");
++      }
++      StringRef Identifier = Parser.getTok().getIdentifier();
++      if (Identifier != "hi" && Identifier != "lo") {
++        return Error(StartLoc, "expected 'hi' or 'lo' after '%'");
++      }
++      ToyMCExpr::ToyExprKind TargetKind =
++          Identifier == "hi" ? ToyMCExpr::TEK_HI : ToyMCExpr::TEK_LO;
++      getLexer().Lex();
++      if (getLexer().isNot(AsmToken::LParen)) {
++        return Error(StartLoc, "expected '(' after '%hi' or '%lo'");
++      }
++      getLexer().Lex(); // Eat the '(' token.
++
++      // std::string At = "@";
++      StringRef AddressAlias = Parser.getTok().getIdentifier();
++      // At += AddressAlias;
++      // const AsmToken AtTok(AsmToken::At, At.data());
++      // getLexer().UnLex(AtTok); // Unlex the '@' token.
++
++      if (Parser.parseExpression(Expr))
++        return true;
++
++      Expr = MCSymbolRefExpr::create(AddressAlias, MCSymbolRefExpr::VK_None,
++                                     getContext());
++      Expr = ToyMCExpr::create(Expr, TargetKind);
++
++      // Eat the ')' bracket.
++      if (getLexer().isNot(AsmToken::RParen))
++        return Error(Parser.getTok().getLoc(), "expected ')'");
++      Parser.Lex();
++      return false;
++    } else {
++      if (Parser.parseExpression(Expr))
++        return true;
++    }
+     SMLoc EndLoc = Parser.getTok().getLoc();
+     Operands.push_back(ToyOperand::createImm(Expr, StartLoc, EndLoc));
+     return false;
+@@ -244,21 +306,12 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
+   return true;
+ }
+ 
+-// Parses register of form %(r|x|cr|fcr)<No>.
++// Parses register of form %(a|t|fa|s|ft|fs)<No>.
+ bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
+                                  SMLoc &EndLoc, bool RestoreOnFailure) {
+   StartLoc = Parser.getTok().getLoc();
+-
+-  // Eat the '%' prefix.
+-  // if (Parser.getTok().isNot(AsmToken::Percent))
+-  //   return true;
+-  // const AsmToken &PercentTok = Parser.getTok();
+-  // Parser.Lex();
+-  // Match the register.
+   if (Parser.getTok().isNot(AsmToken::Identifier) ||
+       (RegNo = MatchRegisterName(Parser.getTok().getIdentifier())) == 0) {
+-    // if (RestoreOnFailure)
+-    //   Parser.getLexer().UnLex(PercentTok);
+     return Error(StartLoc, "invalid register");
+   }
+ 
+@@ -267,6 +320,36 @@ bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
+   return false;
+ }
+ 
++// Parses register of form (sp) -> '(' 'sp' ')' .
++// see llvm/build/lib/Target/Toy/ToyGenAsmMatcher.inc:539
++bool ToyAsmParser::parseScaledRegister(OperandVector &Operands) {
++  SMLoc LBracketLoc = Parser.getTok().getLoc();
++  // Eat the '(' bracket.
++  if (getLexer().isNot(AsmToken::LParen))
++    return Error(Parser.getTok().getLoc(), "expected '('");
++  Parser.Lex();
++
++  if (getLexer().isNot(AsmToken::Identifier))
++    return Error(Parser.getTok().getLoc(), "expected register");
++
++  MCRegister RegNo;
++  SMLoc StartLoc, EndLoc;
++  if (parseRegister(RegNo, StartLoc, EndLoc, /*RestoreOnFailure=*/false))
++    return true;
++
++  // Eat the ')' bracket.
++  if (getLexer().isNot(AsmToken::RParen))
++    return Error(Parser.getTok().getLoc(), "expected ')'");
++  SMLoc RBracLoc = Parser.getTok().getLoc();
++  Parser.Lex();
++
++  Operands.push_back(ToyOperand::createToken("(", LBracketLoc));
++  Operands.push_back(ToyOperand::createReg(RegNo, StartLoc, EndLoc));
++  Operands.push_back(ToyOperand::createToken(")", RBracLoc));
++
++  return false;
++}
++
+ bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
+                                  SMLoc &EndLoc) {
+   return parseRegister(RegNo, StartLoc, EndLoc,
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
+index 8b5b3b572de8..875998699153 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
+@@ -90,8 +90,27 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
+   assert(MO.isExpr() && "Expected MCExpr");
+   const MCExpr *Expr = MO.getExpr();
+   assert(isa<ToyMCExpr>(Expr) && "Expected ToyMCExpr");
+-  llvm_unreachable("ToyMCExpr not implemented yet");
++  // llvm_unreachable("ToyMCExpr not implemented yet");
+ 
++  const MCExpr *Expr = MO.getExpr();
++  const ToyMCExpr *ToyExpr = cast<ToyMCExpr>(Expr);
++  Toy::Fixups FixupKind = Toy::Fixups::fixup_riscv_invalid;
++  switch (ToyExpr->getKind()) {
++  case ToyMCExpr::TEK_HI:
++    FixupKind = Toy::Fixups::fixup_riscv_hi20;
++    break;
++  case ToyMCExpr::TEK_LO:
++    FixupKind = Toy::Fixups::fixup_riscv_lo12_i;
++    break;
++  case ToyMCExpr::TEK_JAL:
++    FixupKind = Toy::Fixups::fixup_riscv_jal;
++    break;
++  case ToyMCExpr::TEK_BRANCH:
++    FixupKind = Toy::Fixups::fixup_riscv_branch;
++    break;
++  }
++  Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(FixupKind)));
++  
+   return 0;
+ }
+ 
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
+index 82933073a878..e012ac2a7831 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
+@@ -21,7 +21,7 @@ void ToyMCExpr::printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const {
+     OS << "%hi(";
+     break;
+   case TEK_LO:
+-    OS << "%lo (";
++    OS << "%lo(";
+     break;
+   default:
+     break;
+diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
+index 5e95dbbed8b6..8a1a55cc7353 100644
+--- a/llvm/lib/Target/Toy/Toy.td
++++ b/llvm/lib/Target/Toy/Toy.td
+@@ -30,15 +30,21 @@ include "ToyInstrInfo.td"
+ 
+ def ToyInstrInfo : InstrInfo;
+ def ToyAsmParser : AsmParser;
++
+ // def ToyAsmWriter : AsmWriter {
+ //   string AsmWriterClassName  = "InstPrinter";
+ //   // int PassSubtarget = 1;
+ //   // int Variant = 0;
+ // }
+ 
++def ToyAsmParserVariant : AsmParserVariant {
++  let TokenizingCharacters = "()";
++}
++
+ def Toy : Target {
+   let InstructionSet = ToyInstrInfo;
+   let AssemblyParsers  = [ToyAsmParser];
++  let AssemblyParserVariants = [ToyAsmParserVariant];
+ }
+ 
+ def : ProcessorModel<"cpu-rv32", NoSchedModel, []>;

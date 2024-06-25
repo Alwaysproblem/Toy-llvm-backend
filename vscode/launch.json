@@ -51,7 +51,7 @@
       "request": "launch",
       // Resolved by CMake Tools:
       "program": "${command:cmake.launchTargetPath}",
-      "args": ["--triple", "toy", "--show-encoding", ".vscode/debug/aa.s"],
+      "args": ["--triple", "toy", "--show-encoding", ".vscode/debug/cc.s"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [
