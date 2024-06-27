@@ -1,5 +1,5 @@
 diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
-index 2b1d4781eb16..a84bd60ae6ac 100644
+index 2b1d4781eb16..7ed0c079644c 100644
 --- a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 +++ b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 @@ -8,9 +8,13 @@
@@ -50,7 +50,7 @@ index 2b1d4781eb16..a84bd60ae6ac 100644
      if (getLexer().isNot(AsmToken::EndOfStatement))
        return Error(getLexer().getLoc(), "unexpected token in argument list");
    }
-@@ -231,11 +245,59 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
+@@ -231,11 +245,58 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
    }
  
    // Could be immediate or address.
@@ -105,7 +105,6 @@ index 2b1d4781eb16..a84bd60ae6ac 100644
 +      if (getLexer().isNot(AsmToken::RParen))
 +        return Error(Parser.getTok().getLoc(), "expected ')'");
 +      Parser.Lex();
-+      return false;
 +    } else {
 +      if (Parser.parseExpression(Expr))
 +        return true;
@@ -113,7 +112,7 @@ index 2b1d4781eb16..a84bd60ae6ac 100644
      SMLoc EndLoc = Parser.getTok().getLoc();
      Operands.push_back(ToyOperand::createImm(Expr, StartLoc, EndLoc));
      return false;
-@@ -244,21 +306,12 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
+@@ -244,21 +305,12 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
    return true;
  }
  
@@ -136,7 +135,7 @@ index 2b1d4781eb16..a84bd60ae6ac 100644
      return Error(StartLoc, "invalid register");
    }
  
-@@ -267,6 +320,36 @@ bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
+@@ -267,6 +319,36 @@ bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
    return false;
  }
  
@@ -174,38 +173,21 @@ index 2b1d4781eb16..a84bd60ae6ac 100644
                                   SMLoc &EndLoc) {
    return parseRegister(RegNo, StartLoc, EndLoc,
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
-index 8b5b3b572de8..875998699153 100644
+index 8b5b3b572de8..c60b3d020694 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
-@@ -90,8 +90,27 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
+@@ -90,7 +90,10 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
    assert(MO.isExpr() && "Expected MCExpr");
    const MCExpr *Expr = MO.getExpr();
    assert(isa<ToyMCExpr>(Expr) && "Expected ToyMCExpr");
 -  llvm_unreachable("ToyMCExpr not implemented yet");
-+  // llvm_unreachable("ToyMCExpr not implemented yet");
++
++  outs() << "getMachineOpValue from ToyMCExpr: ";
++  Expr->dump();
++  outs() << "\n";
  
-+  const MCExpr *Expr = MO.getExpr();
-+  const ToyMCExpr *ToyExpr = cast<ToyMCExpr>(Expr);
-+  Toy::Fixups FixupKind = Toy::Fixups::fixup_riscv_invalid;
-+  switch (ToyExpr->getKind()) {
-+  case ToyMCExpr::TEK_HI:
-+    FixupKind = Toy::Fixups::fixup_riscv_hi20;
-+    break;
-+  case ToyMCExpr::TEK_LO:
-+    FixupKind = Toy::Fixups::fixup_riscv_lo12_i;
-+    break;
-+  case ToyMCExpr::TEK_JAL:
-+    FixupKind = Toy::Fixups::fixup_riscv_jal;
-+    break;
-+  case ToyMCExpr::TEK_BRANCH:
-+    FixupKind = Toy::Fixups::fixup_riscv_branch;
-+    break;
-+  }
-+  Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(FixupKind)));
-+  
    return 0;
  }
- 
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
 index 82933073a878..e012ac2a7831 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
