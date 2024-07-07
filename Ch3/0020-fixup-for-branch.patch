@@ -1,0 +1,41 @@
+diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.cpp b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+index 24b97baf459c..a881d5b9e86c 100644
+--- a/llvm/lib/Target/Toy/ToyMCInstLower.cpp
++++ b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+@@ -9,12 +9,14 @@
+ #include "ToyMCInstLower.h"
+ #include "MCTargetDesc/ToyBaseInfo.h"
+ #include "MCTargetDesc/ToyMCExpr.h"
++#include "MCTargetDesc/ToyMCTargetDesc.h"
+ #include "llvm/CodeGen/AsmPrinter.h"
+ #include "llvm/CodeGen/MachineFunction.h"
+ #include "llvm/CodeGen/MachineInstr.h"
+ #include "llvm/CodeGen/MachineOperand.h"
+ #include "llvm/MC/MCInst.h"
+ #include "llvm/MC/MCStreamer.h"
++#include "llvm/Support/Debug.h"
+ 
+ using namespace llvm;
+ 
+@@ -26,6 +28,13 @@ MCOperand ToyMCInstLower::LowerSymbolOperand(const MachineOperand &MO) const {
+   ToyMCExpr::ToyExprKind TargetKind = ToyMCExpr::TEK_NONE;
+   const MCSymbol *Symbol;
+ 
++  unsigned IsBranch = 0;
++  unsigned int Opcode = MO.getParent()->getOpcode();
++  if (Opcode == Toy::BLT || Opcode == Toy::BEQ || Opcode == Toy::BNE ||
++      Opcode == Toy::BGE) {
++    IsBranch = 1;
++  }
++
+   switch (MO.getTargetFlags()) {
+   default:
+     llvm_unreachable("Invalid target flag!");
+@@ -42,6 +51,7 @@ MCOperand ToyMCInstLower::LowerSymbolOperand(const MachineOperand &MO) const {
+   switch (MO.getType()) {
+   case MachineOperand::MO_MachineBasicBlock:
+     Symbol = MO.getMBB()->getSymbol();
++    TargetKind = IsBranch ? ToyMCExpr::TEK_BRANCH : ToyMCExpr::TEK_JAL;
+     break;
+ 
+   case MachineOperand::MO_GlobalAddress:

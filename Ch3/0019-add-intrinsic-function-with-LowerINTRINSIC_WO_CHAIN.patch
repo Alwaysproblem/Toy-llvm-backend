@@ -1,0 +1,96 @@
+diff --git a/llvm/include/llvm/IR/IntrinsicsToy.td b/llvm/include/llvm/IR/IntrinsicsToy.td
+index 18e137d74bd5..1d8f12aac7ce 100644
+--- a/llvm/include/llvm/IR/IntrinsicsToy.td
++++ b/llvm/include/llvm/IR/IntrinsicsToy.td
+@@ -2,4 +2,8 @@ let TargetPrefix = "toy" in {
+   def int_toy_getsp :
+       ClangBuiltin<"__builtin_getsp">,
+       Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>;
++
++  def int_toy_mod :
++      ClangBuiltin<"__builtin_mod">,
++      Intrinsic<[llvm_i32_ty], [llvm_i32_ty, llvm_i32_ty], [IntrNoMem]>;
+ }
+diff --git a/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
+index 2b8f78abb7ae..c8b162d941dc 100644
+--- a/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
++++ b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
+@@ -17,7 +17,10 @@
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
+ #include "Toy.h"
+ #include "ToyTargetMachine.h"
++#include "llvm/CodeGen/ISDOpcodes.h"
+ #include "llvm/CodeGen/SelectionDAGISel.h"
++#include "llvm/CodeGen/SelectionDAGNodes.h"
++#include "llvm/IR/IntrinsicsToy.h"
+ #include "llvm/Pass.h"
+ #include "llvm/Support/Debug.h"
+ 
+diff --git a/llvm/lib/Target/Toy/ToyISelLowering.cpp b/llvm/lib/Target/Toy/ToyISelLowering.cpp
+index cf621ef4ee65..5f7041c8faa5 100644
+--- a/llvm/lib/Target/Toy/ToyISelLowering.cpp
++++ b/llvm/lib/Target/Toy/ToyISelLowering.cpp
+@@ -16,6 +16,8 @@
+ #include "MCTargetDesc/ToyBaseInfo.h"
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
+ #include "ToySubtarget.h"
++#include "llvm/CodeGen/ISDOpcodes.h"
++#include "llvm/IR/IntrinsicsToy.h"
+ #include "llvm/CodeGen/CallingConvLower.h"
+ #include "llvm/CodeGen/MachineFrameInfo.h"
+ #include "llvm/CodeGen/MachineRegisterInfo.h"
+@@ -37,6 +39,8 @@ ToyTargetLowering::ToyTargetLowering(const TargetMachine &TM,
+   setOperationAction(ISD::ConstantPool, MVT::i32, Custom);
+   setOperationAction(ISD::Constant, MVT::i32, Custom);
+ 
++  setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
++
+   setOperationAction(ISD::BR_CC, MVT::i32, Expand);
+   setOperationAction(ISD::BR_CC, MVT::f32, Expand);
+   setOperationAction(ISD::BR_CC, MVT::f64, Expand);
+@@ -129,6 +133,8 @@ SDValue ToyTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
+     return lowerConstantPool(Op, DAG);
+   case ISD::Constant:
+     return lowerConstant(Op, DAG);
++  case ISD::INTRINSIC_WO_CHAIN:
++    return LowerINTRINSIC_WO_CHAIN(Op, DAG);
+   }
+   return SDValue();
+ }
+@@ -327,6 +333,23 @@ SDValue ToyTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
+   return Chain;
+ }
+ 
++SDValue ToyTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const {
++  SDLoc DL(Op);
++  unsigned IntNo = Op.getConstantOperandVal(0);
++
++  switch (IntNo) {
++    case Intrinsic::toy_mod: {
++      SDValue Arg1 = Op.getOperand(1);
++      SDValue Arg2 = Op.getOperand(2);
++
++      // Create a modulus node
++      return DAG.getNode(ISD::SREM, DL, MVT::i32, {Arg1, Arg2});
++    }
++    default:
++      return SDValue(); // Default case to handle other intrinsics
++  }
++}
++
+ bool ToyTargetLowering::isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
+                                                    EVT VT) const {
+   return true;
+diff --git a/llvm/lib/Target/Toy/ToyISelLowering.h b/llvm/lib/Target/Toy/ToyISelLowering.h
+index df10d07cc662..90ffa2903ecb 100644
+--- a/llvm/lib/Target/Toy/ToyISelLowering.h
++++ b/llvm/lib/Target/Toy/ToyISelLowering.h
+@@ -56,6 +56,8 @@ public:
+   SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
+                     SmallVectorImpl<SDValue> &InVals) const override;
+ 
++  SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const;
++
+   bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
+                                   EVT VT) const override;
+ };
