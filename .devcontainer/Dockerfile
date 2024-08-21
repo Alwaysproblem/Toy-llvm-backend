@@ -18,6 +18,6 @@ RUN git clone --recursive --depth=1 https://github.com/riscv-collab/riscv-gnu-to
     && ./configure --prefix=/opt/gcc-riscv --with-arch=rv32gc --with-abi=ilp32d \
     && make linux -j 16 \
     && rm -rf ../riscv-gnu-toolchain \
-    && echo "PATH=/opt/gcc-riscv/bin/:${PATH}" >> ~/.zshrc
+    && echo "export PATH=/opt/gcc-riscv/bin/:\${PATH}" >> ~/.zshrc
 
 WORKDIR /root/Desktop
