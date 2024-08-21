@@ -1,6 +1,12 @@
 #!/bin/bash
 
 WORKSPACE=$PWD
+
+if [[ -f "/usr/bin/git" ]]; then
+  WORKSPACE=`git rev-parse --show-toplevel`
+  cd ${WORKSPACE}
+fi
+
 source ${WORKSPACE}/tools/apply_patch.sh
 APPLY_PATCH=""
 
@@ -30,7 +36,9 @@ do
     shift
 done
 
-apply_patch ${APPLY_PATCH}
+if [ ! -z "APPLY_PATCH" ]; then
+    apply_patch ${APPLY_PATCH}
+fi
 
 cd ${WORKSPACE}/llvm-project/llvm
 rm -rf build
