@@ -43,6 +43,10 @@
     "yyx-llvm-backend",
     "-v",
     "${localEnv:HOME}/Desktop/dockerVolumn:/root/Desktop/dockerVolumn",
+    "-v",
+    "/usr/bin/qemu-riscv32-static:/usr/bin/qemu-riscv32-static:ro",
+    // "-v",
+    // "/usr/bin/qemu-riscv64-static:/usr/bin/qemu-riscv64-static:ro"
   ],
   "customizations": {
     "vscode": {
