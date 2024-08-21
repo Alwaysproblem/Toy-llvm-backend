@@ -14,7 +14,7 @@ function apply_patch {
   if [[ ${apply_dir} != "" ]]; then
       echo "Applying patch to LLVM source code"
       cd llvm-project/
-      git apply ../${apply_dir}/llvm.patch
+      git apply ../${apply_dir}
   fi
 }
 

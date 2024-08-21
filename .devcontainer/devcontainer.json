@@ -38,10 +38,11 @@
     // "--security-opt",
     // "seccomp=unconfined",
     "--name",
+    "--network=host",
     // "${localEnv:USER}-tvm",
     "yyx-llvm-backend",
     "-v",
-    "/home/yongxiy/Desktop/dockerVolumn:/root/Desktop/dockerVolumn",
+    "${localEnv:HOME}/Desktop/dockerVolumn:/root/Desktop/dockerVolumn",
   ],
   "customizations": {
     "vscode": {

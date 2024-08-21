@@ -10,4 +10,3 @@ unzip clangd-linux-18.1.3.zip
 mv clangd_18.1.3/bin/clangd /root/.local/bin/clangd
 chmod +x /root/.local/bin/clangd
 rm -rf clangd-linux-18.1.3.zip clangd_18.1.3
-
