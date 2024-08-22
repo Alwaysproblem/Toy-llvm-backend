@@ -53,5 +53,6 @@ sudo chmod a+x /usr/bin/qemu-*
 bash tools/apply_all_and_build.sh
 ./llvm-project/llvm/build/bin/llc --filetype=obj vscode/test/hello.ll
 riscv32-unknown-linux-gnu-gcc -march=rv32g -Wl,--dynamic-linker /opt/gcc-riscv/sysroot/lib/ld-linux-riscv32-ilp32d.so.1 -mabi=ilp32d vscode/test/hello.o -o hello
+export LD_LIBRARY_PATH="/opt/gcc-riscv/sysroot/lib/:${LD_LIBRARY_PATH}"
 qemu-riscv32-static ./hello
 ```
