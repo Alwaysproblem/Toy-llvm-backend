@@ -1,5 +1,5 @@
 diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.cpp b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
-index 24b97baf459c..a881d5b9e86c 100644
+index 813bd51359dc..0547a49cb9e0 100644
 --- a/llvm/lib/Target/Toy/ToyMCInstLower.cpp
 +++ b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
 @@ -9,12 +9,14 @@
@@ -37,5 +37,14 @@ index 24b97baf459c..a881d5b9e86c 100644
      Symbol = MO.getMBB()->getSymbol();
 +    TargetKind = IsBranch ? ToyMCExpr::TEK_BRANCH : ToyMCExpr::TEK_JAL;
      break;
- 
    case MachineOperand::MO_GlobalAddress:
+     Symbol = Printer.getSymbol(MO.getGlobal());
+@@ -74,7 +84,7 @@ MCOperand ToyMCInstLower::lowerOperand(const MachineOperand &MO) const {
+   case MachineOperand::MO_Immediate:
+     return MCOperand::createImm(MO.getImm());
+   case MachineOperand::MO_MachineBasicBlock:
+-   case MachineOperand::MO_GlobalAddress:
++  case MachineOperand::MO_GlobalAddress:
+   case MachineOperand::MO_ExternalSymbol:
+   case MachineOperand::MO_MCSymbol:
+   case MachineOperand::MO_JumpTableIndex:

@@ -1,18 +1,18 @@
 diff --git a/llvm/include/llvm/IR/IntrinsicsToy.td b/llvm/include/llvm/IR/IntrinsicsToy.td
-index 18e137d74bd5..1d8f12aac7ce 100644
+index ceb695ceb616..1441b6b3fc2a 100644
 --- a/llvm/include/llvm/IR/IntrinsicsToy.td
 +++ b/llvm/include/llvm/IR/IntrinsicsToy.td
-@@ -2,4 +2,8 @@ let TargetPrefix = "toy" in {
+@@ -14,4 +14,8 @@ let TargetPrefix = "toy" in {
    def int_toy_getsp :
-       ClangBuiltin<"__builtin_getsp">,
-       Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>;
+     ClangBuiltin<"__builtin_getsp">,
+     Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>;
 +
 +  def int_toy_mod :
 +      ClangBuiltin<"__builtin_mod">,
 +      Intrinsic<[llvm_i32_ty], [llvm_i32_ty, llvm_i32_ty], [IntrNoMem]>;
  }
 diff --git a/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
-index 2b8f78abb7ae..c8b162d941dc 100644
+index afde9b332114..c9f6181b751c 100644
 --- a/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
 +++ b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
 @@ -17,7 +17,10 @@
@@ -27,18 +27,20 @@ index 2b8f78abb7ae..c8b162d941dc 100644
  #include "llvm/Support/Debug.h"
  
 diff --git a/llvm/lib/Target/Toy/ToyISelLowering.cpp b/llvm/lib/Target/Toy/ToyISelLowering.cpp
-index cf621ef4ee65..5f7041c8faa5 100644
+index cf621ef4ee65..63098003ffed 100644
 --- a/llvm/lib/Target/Toy/ToyISelLowering.cpp
 +++ b/llvm/lib/Target/Toy/ToyISelLowering.cpp
-@@ -16,6 +16,8 @@
- #include "MCTargetDesc/ToyBaseInfo.h"
+@@ -17,8 +17,10 @@
  #include "MCTargetDesc/ToyMCTargetDesc.h"
  #include "ToySubtarget.h"
-+#include "llvm/CodeGen/ISDOpcodes.h"
-+#include "llvm/IR/IntrinsicsToy.h"
  #include "llvm/CodeGen/CallingConvLower.h"
++#include "llvm/CodeGen/ISDOpcodes.h"
  #include "llvm/CodeGen/MachineFrameInfo.h"
  #include "llvm/CodeGen/MachineRegisterInfo.h"
++#include "llvm/IR/IntrinsicsToy.h"
+ #include "llvm/Support/Alignment.h"
+ #include <deque>
+ 
 @@ -37,6 +39,8 @@ ToyTargetLowering::ToyTargetLowering(const TargetMachine &TM,
    setOperationAction(ISD::ConstantPool, MVT::i32, Custom);
    setOperationAction(ISD::Constant, MVT::i32, Custom);
