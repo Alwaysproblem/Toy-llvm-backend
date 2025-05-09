@@ -1,5 +1,5 @@
 diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
-index 2b1d4781eb16..7ed0c079644c 100644
+index 31e473e047e0..65561180750d 100644
 --- a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 +++ b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 @@ -8,9 +8,13 @@
@@ -25,7 +25,19 @@ index 2b1d4781eb16..7ed0c079644c 100644
    bool MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
                                 OperandVector &Operands, MCStreamer &Out,
                                 uint64_t &ErrorInfo,
-@@ -203,12 +209,20 @@ bool ToyAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
+@@ -178,6 +184,11 @@ public:
+                const MCInstrInfo &MII, const MCTargetOptions &Options)
+       : MCTargetAsmParser(Options, STI, MII), Parser(Parser),
+         SubtargetInfo(STI) {
++    Parser.addAliasForDirective(".half", ".2byte");
++    Parser.addAliasForDirective(".hword", ".2byte");
++    Parser.addAliasForDirective(".word", ".4byte");
++    Parser.addAliasForDirective(".dword", ".8byte");
++
+     setAvailableFeatures(
+         ComputeAvailableFeatures(SubtargetInfo.getFeatureBits()));
+   }
+@@ -203,12 +214,20 @@ bool ToyAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
      }
  
      // Read the following operands.
@@ -50,7 +62,7 @@ index 2b1d4781eb16..7ed0c079644c 100644
      if (getLexer().isNot(AsmToken::EndOfStatement))
        return Error(getLexer().getLoc(), "unexpected token in argument list");
    }
-@@ -231,11 +245,58 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
+@@ -231,11 +250,54 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
    }
  
    // Could be immediate or address.
@@ -88,11 +100,7 @@ index 2b1d4781eb16..7ed0c079644c 100644
 +      }
 +      getLexer().Lex(); // Eat the '(' token.
 +
-+      // std::string At = "@";
 +      StringRef AddressAlias = Parser.getTok().getIdentifier();
-+      // At += AddressAlias;
-+      // const AsmToken AtTok(AsmToken::At, At.data());
-+      // getLexer().UnLex(AtTok); // Unlex the '@' token.
 +
 +      if (Parser.parseExpression(Expr))
 +        return true;
@@ -112,7 +120,7 @@ index 2b1d4781eb16..7ed0c079644c 100644
      SMLoc EndLoc = Parser.getTok().getLoc();
      Operands.push_back(ToyOperand::createImm(Expr, StartLoc, EndLoc));
      return false;
-@@ -244,21 +305,12 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
+@@ -244,21 +306,12 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
    return true;
  }
  
@@ -135,7 +143,7 @@ index 2b1d4781eb16..7ed0c079644c 100644
      return Error(StartLoc, "invalid register");
    }
  
-@@ -267,6 +319,36 @@ bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
+@@ -267,6 +320,36 @@ bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
    return false;
  }
  
@@ -172,11 +180,19 @@ index 2b1d4781eb16..7ed0c079644c 100644
  bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
                                   SMLoc &EndLoc) {
    return parseRegister(RegNo, StartLoc, EndLoc,
+@@ -295,6 +378,7 @@ bool ToyAsmParser::MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
+ 
+   switch (MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
+   case Match_Success:
++    Inst.setLoc(IdLoc);
+     Out.emitInstruction(Inst, SubtargetInfo);
+     Opcode = Inst.getOpcode();
+     return false;
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
-index 8b5b3b572de8..c60b3d020694 100644
+index 83dd7c4ccb3b..30f9f4c3275c 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
-@@ -90,7 +90,10 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
+@@ -91,7 +91,10 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
    assert(MO.isExpr() && "Expected MCExpr");
    const MCExpr *Expr = MO.getExpr();
    assert(isa<ToyMCExpr>(Expr) && "Expected ToyMCExpr");
@@ -189,7 +205,7 @@ index 8b5b3b572de8..c60b3d020694 100644
    return 0;
  }
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
-index 82933073a878..e012ac2a7831 100644
+index d2abe53f7293..3ffaf404ce24 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
 @@ -21,7 +21,7 @@ void ToyMCExpr::printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const {
@@ -202,10 +218,10 @@ index 82933073a878..e012ac2a7831 100644
    default:
      break;
 diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
-index 5e95dbbed8b6..8a1a55cc7353 100644
+index 5cc49b8af8db..9a9441b2426b 100644
 --- a/llvm/lib/Target/Toy/Toy.td
 +++ b/llvm/lib/Target/Toy/Toy.td
-@@ -30,15 +30,21 @@ include "ToyInstrInfo.td"
+@@ -29,15 +29,21 @@ include "ToyInstrInfo.td"
  
  def ToyInstrInfo : InstrInfo;
  def ToyAsmParser : AsmParser;

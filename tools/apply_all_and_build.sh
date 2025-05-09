@@ -8,13 +8,11 @@ if [[ -f "/usr/bin/git" ]]; then
 fi
 
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch1/0001-Adding-the-new-architecture-to-the-Triple-class.patch
-bash ${WORKSPACE}/tools/apply_patch.sh -p Ch1/0002-TableGen-SubtargetEmitter-must-use-std-nullopt-69475.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch1/0003-Targeting-Registration.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch1/0004-Add-minimal-Toy-backend.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch1/0005-Add-ToyMCCodeEmitter-and-asm-parser.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch1/0006-Add-disassembler.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch2/0007-Adding-Instruction-Selection.patch
-bash ${WORKSPACE}/tools/apply_patch.sh -p Ch2/0008-format-code.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch2/0009-store-and-load.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch3/0010-find-global-address.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch3/0011-stack-management.patch

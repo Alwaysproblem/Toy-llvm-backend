@@ -1,24 +1,25 @@
 diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
-index c78ec765b505..0773da5b5bf1 100644
+index 5fc8bf233053..bcec1b615ae7 100644
 --- a/llvm/lib/Target/Toy/CMakeLists.txt
 +++ b/llvm/lib/Target/Toy/CMakeLists.txt
-@@ -4,7 +4,10 @@ set(LLVM_TARGET_DEFINITIONS Toy.td)
+@@ -4,8 +4,11 @@ set(LLVM_TARGET_DEFINITIONS Toy.td)
  
  tablegen(LLVM ToyGenAsmMatcher.inc -gen-asm-matcher)
  tablegen(LLVM ToyGenAsmWriter.inc -gen-asm-writer)
 +tablegen(LLVM ToyGenCallingConv.inc -gen-callingconv)
 +tablegen(LLVM ToyGenDAGISel.inc -gen-dag-isel)
+ tablegen(LLVM ToyGenMCCodeEmitter.inc -gen-emitter)
  tablegen(LLVM ToyGenDisassemblerTables.inc -gen-disassembler)
 +tablegen(LLVM ToyGenMCPseudoLowering.inc -gen-pseudo-lowering)
- tablegen(LLVM ToyGenMCCodeEmitter.inc -gen-emitter)
  tablegen(LLVM ToyGenInstrInfo.inc -gen-instr-info)
  tablegen(LLVM ToyGenRegisterInfo.inc -gen-register-info)
-@@ -13,12 +16,34 @@ tablegen(LLVM ToyGenSubtargetInfo.inc -gen-subtarget)
+ tablegen(LLVM ToyGenSubtargetInfo.inc -gen-subtarget)
+@@ -13,10 +16,32 @@ tablegen(LLVM ToyGenSubtargetInfo.inc -gen-subtarget)
  add_public_tablegen_target(ToyCommonTableGen)
  
  add_llvm_target(ToyCodeGen
 +  ToyAsmPrinter.cpp
-   ToyTargetMachine.cpp
++  ToyTargetMachine.cpp
 +  ToyFrameLowering.cpp
 +  ToyInstrInfo.cpp
 +  ToyISelDAGToDAG.cpp
@@ -26,8 +27,10 @@ index c78ec765b505..0773da5b5bf1 100644
 +  ToyMCInstLower.cpp
 +  ToyRegisterInfo.cpp
 +  ToySubtarget.cpp
-+  ToyTargetMachine.cpp
-+
+   ToyTargetMachine.cpp
+ 
+-  ADD_TO_COMPONENT
+-  Toy
 +  LINK_COMPONENTS
 +  Analysis
 +  AsmPrinter
@@ -40,15 +43,12 @@ index c78ec765b505..0773da5b5bf1 100644
 +  ToyDesc
 +  ToyInfo
 +  Target
- 
-   ADD_TO_COMPONENT
-   Toy
++ 
++   ADD_TO_COMPONENT
++   Toy
    )
--  
-+
+ 
  add_subdirectory(AsmParser)
- add_subdirectory(Disassembler)
- add_subdirectory(TargetInfo)
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h
 new file mode 100644
 index 000000000000..c8d8e52cc903
@@ -77,22 +77,12 @@ index 000000000000..c8d8e52cc903
 +} // namespace llvm
 +
 +#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYBASEINFO_H
-diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
-index b063ac27467e..999d38aeede4 100644
---- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
-+++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
-@@ -52,4 +52,4 @@ std::unique_ptr<MCObjectTargetWriter> createToyObjectWriter(uint8_t OSABI);
- #define GET_SUBTARGETINFO_ENUM
- #include "ToyGenSubtargetInfo.inc"
- 
--#endif
-+#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCTARGETDESC_H
 diff --git a/llvm/lib/Target/Toy/Toy.h b/llvm/lib/Target/Toy/Toy.h
 new file mode 100644
-index 000000000000..8cf091393cd2
+index 000000000000..0ac07339b1c9
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/Toy.h
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,37 @@
 +//===-- Toy.h - Top-level interface for Toy representation ------*- C++ -*-===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -120,10 +110,9 @@ index 000000000000..8cf091393cd2
 +class InstructionSelector;
 +class PassRegistry;
 +
-+FunctionPass *createToyISelDag(ToyTargetMachine &TM,
-+                               CodeGenOpt::Level OptLevel);
++FunctionPass *createToyISelDag(ToyTargetMachine &TM, CodeGenOptLevel OptLevel);
 +
-+void initializeToyDAGToDAGISelPass(PassRegistry &);
++void initializeToyDAGToDAGISelLegacyPass(PassRegistry &);
 +
 +InstructionSelector *createToyInstructionSelector(const ToyTargetMachine &,
 +                                                  const ToySubtarget &,
@@ -132,12 +121,12 @@ index 000000000000..8cf091393cd2
 +
 +#endif // LLVM_LIB_TARGET_TOY_TOY_H
 diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
-index 7599cc5d30ba..5e95dbbed8b6 100644
+index 4a02ab43225b..5cc49b8af8db 100644
 --- a/llvm/lib/Target/Toy/Toy.td
 +++ b/llvm/lib/Target/Toy/Toy.td
-@@ -20,6 +20,7 @@ include "llvm/Target/Target.td"
- //===----------------------------------------------------------------------===//
+@@ -15,6 +15,7 @@
  
+ include "llvm/Target/Target.td"
  include "ToyRegisterInfo.td"
 +include "ToyCallingConv.td"
  include "ToyInstrFormats.td"
@@ -145,10 +134,10 @@ index 7599cc5d30ba..5e95dbbed8b6 100644
  
 diff --git a/llvm/lib/Target/Toy/ToyAsmPrinter.cpp b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
 new file mode 100644
-index 000000000000..a2075816b1e7
+index 000000000000..422a19e5e9a3
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,64 @@
 +//===-- ToyAsmPrinter.cpp - Toy LLVM assembly writer ----------*- C++ -*-===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -162,9 +151,9 @@ index 000000000000..a2075816b1e7
 +//
 +//===----------------------------------------------------------------------===//
 +
-+#include "ToyMCInstLower.h"
 +#include "MCTargetDesc/ToyMCTargetDesc.h"
 +#include "TargetInfo/ToyTargetInfo.h"
++#include "ToyMCInstLower.h"
 +#include "llvm/CodeGen/AsmPrinter.h"
 +#include "llvm/CodeGen/MachineInstr.h"
 +#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
@@ -182,14 +171,11 @@ index 000000000000..a2075816b1e7
 +namespace {
 +class ToyAsmPrinter : public AsmPrinter {
 +public:
-+  explicit ToyAsmPrinter(
-+      TargetMachine &TM,
-+      std::unique_ptr<MCStreamer> Streamer)
++  explicit ToyAsmPrinter(TargetMachine &TM,
++                         std::unique_ptr<MCStreamer> Streamer)
 +      : AsmPrinter(TM, std::move(Streamer)) {}
 +
-+  StringRef getPassName() const override {
-+    return "Toy Assembly Printer";
-+  }
++  StringRef getPassName() const override { return "Toy Assembly Printer"; }
 +  bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
 +                                   const MachineInstr *MI);
 +  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp) const {
@@ -203,8 +189,7 @@ index 000000000000..a2075816b1e7
 +
 +#include "ToyGenMCPseudoLowering.inc"
 +
-+void ToyAsmPrinter::emitInstruction(
-+    const MachineInstr *MI) {
++void ToyAsmPrinter::emitInstruction(const MachineInstr *MI) {
 +  if (emitPseudoExpansionLowering(*OutStreamer, MI))
 +    return;
 +  MCInst LoweredMI;
@@ -214,10 +199,8 @@ index 000000000000..a2075816b1e7
 +}
 +
 +// Force static initialization.
-+extern "C" LLVM_EXTERNAL_VISIBILITY void
-+LLVMInitializeToyAsmPrinter() {
-+  RegisterAsmPrinter<ToyAsmPrinter> X(
-+      getTheToyTarget());
++extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyAsmPrinter() {
++  RegisterAsmPrinter<ToyAsmPrinter> X(getTheToyTarget());
 +}
 diff --git a/llvm/lib/Target/Toy/ToyCallingConv.td b/llvm/lib/Target/Toy/ToyCallingConv.td
 new file mode 100644
@@ -281,10 +264,10 @@ index 000000000000..fc0a47c667bd
 +bool ToyFrameLowering::hasFP(const MachineFunction &MF) const { return false; }
 diff --git a/llvm/lib/Target/Toy/ToyFrameLowering.h b/llvm/lib/Target/Toy/ToyFrameLowering.h
 new file mode 100644
-index 000000000000..76ee9db5db8b
+index 000000000000..7b11b7dad071
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyFrameLowering.h
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,29 @@
 +//===-- ToyFrameLowering.h - Frame lowering for Toy -----------*- C++ -*-===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -307,12 +290,8 @@ index 000000000000..76ee9db5db8b
 +public:
 +  ToyFrameLowering();
 +
-+  void
-+  emitPrologue(MachineFunction &MF,
-+               MachineBasicBlock &MBB) const override;
-+  void
-+  emitEpilogue(MachineFunction &MF,
-+               MachineBasicBlock &MBB) const override;
++  void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
++  void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
 +  bool hasFP(const MachineFunction &MF) const override;
 +};
 +} // end namespace llvm
@@ -320,12 +299,12 @@ index 000000000000..76ee9db5db8b
 +#endif // LLVM_LIB_TARGET_TOY_TOYFRAMELOWERING_H
 diff --git a/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
 new file mode 100644
-index 000000000000..a1c3f2a70f3e
+index 000000000000..c94596035fa6
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,76 @@
 +//===-- ToyISelDAGToDAG.cpp - A dag to dag inst
-+//selector for Toy --------===//
++// selector for Toy --------===//
 +//
 +// Part of the LLVM Project, under the Apache License
 +// v2.0 with LLVM Exceptions. See
@@ -340,9 +319,9 @@ index 000000000000..a1c3f2a70f3e
 +//
 +//===----------------------------------------------------------------------===//
 +
++#include "MCTargetDesc/ToyMCTargetDesc.h"
 +#include "Toy.h"
 +#include "ToyTargetMachine.h"
-+#include "MCTargetDesc/ToyMCTargetDesc.h"
 +#include "llvm/CodeGen/SelectionDAGISel.h"
 +#include "llvm/Pass.h"
 +#include "llvm/Support/Debug.h"
@@ -350,8 +329,7 @@ index 000000000000..a1c3f2a70f3e
 +using namespace llvm;
 +
 +#define DEBUG_TYPE "Toy-isel"
-+#define PASS_NAME                                      \
-+  "Toy DAG->DAG Pattern Instruction Selection"
++#define PASS_NAME "Toy DAG->DAG Pattern Instruction Selection"
 +
 +namespace {
 +
@@ -359,9 +337,8 @@ index 000000000000..a1c3f2a70f3e
 +public:
 +  static char ID;
 +
-+  ToyDAGToDAGISel(ToyTargetMachine &TM,
-+                   CodeGenOpt::Level OptLevel)
-+      : SelectionDAGISel(ID, TM, OptLevel) {}
++  ToyDAGToDAGISel(ToyTargetMachine &TM, CodeGenOptLevel OptLevel)
++      : SelectionDAGISel(TM, OptLevel) {}
 +
 +  // Override SelectionDAGISel.
 +  void Select(SDNode *Node) override;
@@ -370,23 +347,34 @@ index 000000000000..a1c3f2a70f3e
 +// description.
 +#include "ToyGenDAGISel.inc"
 +};
++
++class ToyDAGToDAGISelLegacy : public SelectionDAGISelLegacy {
++public:
++  static char ID;
++  explicit ToyDAGToDAGISelLegacy(ToyTargetMachine &tm, CodeGenOptLevel OptLevel)
++      : SelectionDAGISelLegacy(
++            ID, std::make_unique<ToyDAGToDAGISel>(tm, OptLevel)) {}
++};
 +} // end anonymous namespace
 +
-+char ToyDAGToDAGISel::ID = 0;
++char ToyDAGToDAGISelLegacy::ID = 0;
 +
-+INITIALIZE_PASS(ToyDAGToDAGISel, DEBUG_TYPE, PASS_NAME,
-+                false, false)
++INITIALIZE_PASS(ToyDAGToDAGISelLegacy, DEBUG_TYPE, PASS_NAME, false, false)
 +
-+FunctionPass *
-+llvm::createToyISelDag(ToyTargetMachine &TM,
-+                        CodeGenOpt::Level OptLevel) {
-+  return new ToyDAGToDAGISel(TM, OptLevel);
++FunctionPass *llvm::createToyISelDag(ToyTargetMachine &TM,
++                                     CodeGenOptLevel OptLevel) {
++  return new ToyDAGToDAGISelLegacy(TM, OptLevel);
 +}
 +
 +void ToyDAGToDAGISel::Select(SDNode *Node) {
 +  // Instruction Selection not handled by the
 +  // auto-generated tablegen selection should be handled
 +  // here.
++
++  if (Node->isMachineOpcode()) {
++    Node->setNodeId(-1);
++    return;
++  }
 +
 +  // Select the default instruction.
 +  SelectCode(Node);
@@ -801,10 +789,10 @@ index 000000000000..df10d07cc662
 +
 +#endif // LLVM_LIB_TARGET_TOY_TOYISELLOWERING_H
 diff --git a/llvm/lib/Target/Toy/ToyInstrFormats.td b/llvm/lib/Target/Toy/ToyInstrFormats.td
-index 11d95598beb4..03505cd56732 100644
+index 538acad47a9b..a30f515512a6 100644
 --- a/llvm/lib/Target/Toy/ToyInstrFormats.td
 +++ b/llvm/lib/Target/Toy/ToyInstrFormats.td
-@@ -28,14 +28,14 @@ class ToyInst<dag outs, dag ins, string asm, list<dag> pattern>: Instruction
+@@ -28,16 +28,16 @@ class ToyInst<dag outs, dag ins, string asm, list<dag> pattern>: Instruction
    let Size = 4; // this will autogen the DecoderTableToy32
  
    let OutOperandList = outs;
@@ -815,6 +803,8 @@ index 11d95598beb4..03505cd56732 100644
 +  let AsmString      = asm;
 +  let Pattern        = pattern;
  
+   let DecoderNamespace = "Toy";
+ 
    field bits<32> Inst;
 -  bits<32> SoftFail = 0;
 -  bits<7> Opcode = 0;
@@ -822,9 +812,9 @@ index 11d95598beb4..03505cd56732 100644
 +  bits<32> SoftFail  = 0;
 +  bits<7> Opcode     = 0;
 +  let Inst{6-0}      = Opcode;
- 
-   let DecoderNamespace = "Toy";
  }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
 @@ -56,7 +56,7 @@ class InstI<bits<7> opcode, bits<3> funct3,
    let Inst{31-20} = imm;
    let Inst{19-15} = rs1;
@@ -897,18 +887,28 @@ index 11d95598beb4..03505cd56732 100644
  }
  
  //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
-@@ -163,15 +163,15 @@ class InstJ<bits<7> opcode, dag outs, dag ins,
-       bits<20> imm20;
-       bits<5> rd;
- 
+@@ -159,19 +159,19 @@ class InstS<bits<7> opcode, bits<3> funct3,
+ class InstJ<bits<7> opcode, dag outs, dag ins, 
+             string asm, 
+             list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
+-      let Opcode = opcode;
+-      bits<20> imm20;
+-      bits<5> rd;
+-
 -      let Inst{31} = imm20{19};
-+      let Inst{31}    = imm20{19};
-       let Inst{30-21} = imm20{9-0};
+-      let Inst{30-21} = imm20{9-0};
 -      let Inst{20} = imm20{10};
-+      let Inst{20}    = imm20{10};
-       let Inst{19-12} = imm20{18-11};
+-      let Inst{19-12} = imm20{18-11};
 -      let Inst{11-7} = rd;
-+      let Inst{11-7}  = rd;
++  let Opcode = opcode;
++  bits<20> imm20;
++  bits<5> rd;
++
++  let Inst{31}    = imm20{19};
++  let Inst{30-21} = imm20{9-0};
++  let Inst{20}    = imm20{10};
++  let Inst{19-12} = imm20{18-11};
++  let Inst{11-7}  = rd;
  }
  
  class ToyPseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
@@ -920,10 +920,10 @@ index 11d95598beb4..03505cd56732 100644
  }
 diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.cpp b/llvm/lib/Target/Toy/ToyInstrInfo.cpp
 new file mode 100644
-index 000000000000..a99f0cfe144c
+index 000000000000..bbbb3e012803
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyInstrInfo.cpp
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,36 @@
 +//===-- ToyInstrInfo.cpp - Toy instruction information ------------------===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -937,8 +937,8 @@ index 000000000000..a99f0cfe144c
 +//===----------------------------------------------------------------------===//
 +
 +#include "ToyInstrInfo.h"
-+#include "ToySubtarget.h"
 +#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "ToySubtarget.h"
 +#include "llvm/CodeGen/LiveIntervals.h"
 +#include "llvm/CodeGen/LiveVariables.h"
 +#include "llvm/CodeGen/MachineBasicBlock.h"
@@ -959,8 +959,7 @@ index 000000000000..a99f0cfe144c
 +// Pin the vtable to this file.
 +void ToyInstrInfo::anchor() {}
 +
-+ToyInstrInfo::ToyInstrInfo(ToySubtarget &STI)
-+    : ToyGenInstrInfo(), STI(STI) {}
++ToyInstrInfo::ToyInstrInfo(ToySubtarget &STI) : ToyGenInstrInfo(), STI(STI) {}
 diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.h b/llvm/lib/Target/Toy/ToyInstrInfo.h
 new file mode 100644
 index 000000000000..89094cb9675e
@@ -1007,7 +1006,7 @@ index 000000000000..89094cb9675e
 +
 +#endif // LLVM_LIB_TARGET_TOY_TOYINSTRINFO_H
 diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
-index fe0180b1f9e5..f70fab056d26 100644
+index a0e3b75c66be..d06cb338a639 100644
 --- a/llvm/lib/Target/Toy/ToyInstrInfo.td
 +++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
 @@ -9,6 +9,35 @@
@@ -1046,31 +1045,32 @@ index fe0180b1f9e5..f70fab056d26 100644
  class ArithLogicI <bits<7> opcode, bits<3> funct3, string inst, SDNode node>:
        InstI<opcode, funct3, (outs GPR:$rd), (ins GPR:$rs1, imm12:$imm),
        !strconcat(inst, "\t$rd, $rs1, $imm"),
-@@ -18,3 +47,18 @@ def ADDI : ArithLogicI<0b0010011, 0b000, "addi", add>;
+@@ -18,3 +47,19 @@ def ADDI : ArithLogicI<0b0010011, 0b000, "addi", add>;
  def ANDI : ArithLogicI<0b0010011, 0b111, "andi", and>;
- def ORI : ArithLogicI<0b0010011, 0b110, "ori", or>;
+ def ORI  : ArithLogicI<0b0010011, 0b110, "ori",  or>;
  def XORI : ArithLogicI<0b0010011, 0b100, "xori", xor>;
++
 +
 +class ArithLogicR <bits<7> funct7, bits<3> funct3, string inst, SDNode node>:
 +      InstR<0b0110011, funct7, funct3, (outs GPR:$rd), (ins GPR:$rs1, GPR:$rs2),
 +      !strconcat(inst, "\t$rd, $rs1, $rs2"),
 +      [(set GPR:$rd, (node GPR:$rs1, GPR:$rs2))]>;
 +
-+def ADD : ArithLogicR<0b0000000, 0b000, "add", add>;
-+def SUB : ArithLogicR<0b0100000, 0b000, "sub", sub>;
-+def MUL : ArithLogicR<0b0000001, 0b000, "mul", mul>;
++def ADD  : ArithLogicR<0b0000000, 0b000, "add",  add>;
++def SUB  : ArithLogicR<0b0100000, 0b000, "sub",  sub>;
++def MUL  : ArithLogicR<0b0000001, 0b000, "mul",  mul>;
 +def MULH : ArithLogicR<0b0000001, 0b001, "mulh", mulhs>;
-+def DIV : ArithLogicR<0b0000001, 0b100, "div", sdiv>;
-+def REM : ArithLogicR<0b0000001, 0b110, "rem", srem>;
-+def AND : ArithLogicR<0b0000000, 0b111, "and", and>;
-+def OR  : ArithLogicR<0b0000000, 0b110, "or", or>;
-+def XOR : ArithLogicR<0b0000000, 0b100, "xor", xor>;
++def DIV  : ArithLogicR<0b0000001, 0b100, "div",  sdiv>;
++def REM  : ArithLogicR<0b0000001, 0b110, "rem",  srem>;
++def AND  : ArithLogicR<0b0000000, 0b111, "and",  and>;
++def OR   : ArithLogicR<0b0000000, 0b110, "or",   or>;
++def XOR  : ArithLogicR<0b0000000, 0b100, "xor",  xor>;
 diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.cpp b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
 new file mode 100644
-index 000000000000..270b6fc54d9b
+index 000000000000..3fbc074f80b3
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,38 @@
 +//===-- ToyMCInstLower.cpp - Lower MachineInstr to MCInst ----------------===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -1088,8 +1088,7 @@ index 000000000000..270b6fc54d9b
 +
 +using namespace llvm;
 +
-+MCOperand ToyMCInstLower::lowerOperand(
-+    const MachineOperand &MO) const {
++MCOperand ToyMCInstLower::lowerOperand(const MachineOperand &MO) const {
 +  switch (MO.getType()) {
 +  case MachineOperand::MO_Register:
 +    return MCOperand::createReg(MO.getReg());
@@ -1102,8 +1101,7 @@ index 000000000000..270b6fc54d9b
 +  }
 +}
 +
-+void ToyMCInstLower::lower(const MachineInstr *MI,
-+                            MCInst &OutMI) const {
++void ToyMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
 +  OutMI.setOpcode(MI->getOpcode());
 +  for (auto &MO : MI->operands()) {
 +    // Ignore all implicit register operands.
@@ -1151,7 +1149,7 @@ index 000000000000..062a59bb2e50
 +#endif // LLVM_LIB_TARGET_TOY_TOYMCINSTLOWER_H
 diff --git a/llvm/lib/Target/Toy/ToyRegisterInfo.cpp b/llvm/lib/Target/Toy/ToyRegisterInfo.cpp
 new file mode 100644
-index 000000000000..b88c3278370f
+index 000000000000..1d7269d6ae2c
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyRegisterInfo.cpp
 @@ -0,0 +1,105 @@
@@ -1181,7 +1179,7 @@ index 000000000000..b88c3278370f
 +#include "llvm/CodeGen/TargetInstrInfo.h"
 +#include "llvm/MC/MCRegister.h"
 +
-+#define DEBUG_TYPE "toy-rigister-info"
++#define DEBUG_TYPE "toy-register-info"
 +
 +using namespace llvm;
 +
@@ -1311,7 +1309,7 @@ index 000000000000..6e5d2fc591d6
 +#endif // LLVM_LIB_TARGET_TOY_TOYREGISTERINFO_H
 diff --git a/llvm/lib/Target/Toy/ToySubtarget.cpp b/llvm/lib/Target/Toy/ToySubtarget.cpp
 new file mode 100644
-index 000000000000..737405cee816
+index 000000000000..4ca407a9aa0e
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToySubtarget.cpp
 @@ -0,0 +1,32 @@
@@ -1346,7 +1344,7 @@ index 000000000000..737405cee816
 +ToySubtarget::ToySubtarget(const Triple &TT, const std::string &CPU,
 +                           const std::string &FS, const TargetMachine &TM)
 +    : ToyGenSubtargetInfo(TT, CPU, /*TuneCPU*/ CPU, FS), InstrInfo(*this),
-+      TLInfo(TM, *this), FrameLowering(), RegisterInfo(*this, getHwMode()){}
++      TLInfo(TM, *this), FrameLowering(), RegisterInfo(*this, getHwMode()) {}
 diff --git a/llvm/lib/Target/Toy/ToySubtarget.h b/llvm/lib/Target/Toy/ToySubtarget.h
 new file mode 100644
 index 000000000000..cb0c3ff213c5
@@ -1421,10 +1419,10 @@ index 000000000000..cb0c3ff213c5
 +
 +#endif // LLVM_LIB_TARGET_TOY_TOYSUBTARGET_H
 diff --git a/llvm/lib/Target/Toy/ToyTargetMachine.cpp b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
-index 83d40c6668d4..b424db5c628e 100644
+index d9ac61731702..61936bd35b20 100644
 --- a/llvm/lib/Target/Toy/ToyTargetMachine.cpp
 +++ b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
-@@ -9,9 +9,131 @@
+@@ -9,9 +9,117 @@
  //
  //===----------------------------------------------------------------------===//
  
@@ -1441,20 +1439,15 @@ index 83d40c6668d4..b424db5c628e 100644
 +
  extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTarget() {
 -  // TODO Register the target.
--}
-\ No newline at end of file
 +  // Register the target.
 +  RegisterTargetMachine<ToyTargetMachine> X(getTheToyTarget());
 +  auto &PR = *PassRegistry::getPassRegistry();
-+  initializeToyDAGToDAGISelPass(PR);
++  initializeToyDAGToDAGISelLegacyPass(PR);
 +}
-+
 +
 +namespace {
 +// TODO: Check.
-+std::string computeDataLayout(const Triple &TT,
-+                              StringRef CPU,
-+                              StringRef FS) {
++std::string computeDataLayout(const Triple &TT, StringRef CPU, StringRef FS) {
 +  std::string Ret;
 +
 +  // Big endian.
@@ -1486,35 +1479,29 @@ index 83d40c6668d4..b424db5c628e 100644
 +} // namespace
 +
 +/// Create an Toy architecture model.
-+ToyTargetMachine::ToyTargetMachine(
-+    const Target &T, const Triple &TT, StringRef CPU,
-+    StringRef FS, const TargetOptions &Options,
-+    std::optional<Reloc::Model> RM,
-+    std::optional<CodeModel::Model> CM,
-+    CodeGenOpt::Level OL, bool JIT)
-+    : LLVMTargetMachine(
-+          T, computeDataLayout(TT, CPU, FS), TT, CPU,
-+          FS, Options, !RM ? Reloc::Static : *RM,
-+          getEffectiveCodeModel(CM, CodeModel::Medium),
-+          OL),
-+      TLOF(std::make_unique<
-+           TargetLoweringObjectFileELF>()) {
++ToyTargetMachine::ToyTargetMachine(const Target &T, const Triple &TT,
++                                   StringRef CPU, StringRef FS,
++                                   const TargetOptions &Options,
++                                   std::optional<Reloc::Model> RM,
++                                   std::optional<CodeModel::Model> CM,
++                                   CodeGenOptLevel OL, bool JIT)
++    : LLVMTargetMachine(T, computeDataLayout(TT, CPU, FS), TT, CPU, FS, Options,
++                        !RM ? Reloc::Static : *RM,
++                        getEffectiveCodeModel(CM, CodeModel::Medium), OL),
++      TLOF(std::make_unique<TargetLoweringObjectFileELF>()) {
 +  initAsmInfo();
-+}
+ }
 +
 +ToyTargetMachine::~ToyTargetMachine() {}
 +
 +const ToySubtarget *
-+ToyTargetMachine::getSubtargetImpl(
-+    const Function &F) const {
++ToyTargetMachine::getSubtargetImpl(const Function &F) const {
 +  Attribute CPUAttr = F.getFnAttribute("target-cpu");
-+  Attribute FSAttr =
-+      F.getFnAttribute("target-features");
++  Attribute FSAttr = F.getFnAttribute("target-features");
 +
-+  std::string CPU =
-+      !CPUAttr.hasAttribute(Attribute::None)
-+          ? CPUAttr.getValueAsString().str()
-+          : TargetCPU;
++  std::string CPU = !CPUAttr.hasAttribute(Attribute::None)
++                        ? CPUAttr.getValueAsString().str()
++                        : TargetCPU;
 +  std::string FS = !FSAttr.hasAttribute(Attribute::None)
 +                       ? FSAttr.getValueAsString().str()
 +                       : TargetFS;
@@ -1526,8 +1513,7 @@ index 83d40c6668d4..b424db5c628e 100644
 +    // TM and the code generation flags on the function
 +    // that reside in TargetOptions.
 +    resetTargetOptions(F);
-+    I = std::make_unique<ToySubtarget>(TargetTriple,
-+                                        CPU, FS, *this);
++    I = std::make_unique<ToySubtarget>(TargetTriple, CPU, FS, *this);
 +  }
 +
 +  return I.get();
@@ -1537,8 +1523,7 @@ index 83d40c6668d4..b424db5c628e 100644
 +/// Toy Code Generator Pass Configuration Options.
 +class ToyPassConfig : public TargetPassConfig {
 +public:
-+  ToyPassConfig(ToyTargetMachine &TM,
-+                 PassManagerBase &PM)
++  ToyPassConfig(ToyTargetMachine &TM, PassManagerBase &PM)
 +      : TargetPassConfig(TM, PM) {}
 +
 +  bool addInstSelector() override;
@@ -1546,25 +1531,22 @@ index 83d40c6668d4..b424db5c628e 100644
 +};
 +} // namespace
 +
-+TargetPassConfig *ToyTargetMachine::createPassConfig(
-+    PassManagerBase &PM) {
++TargetPassConfig *ToyTargetMachine::createPassConfig(PassManagerBase &PM) {
 +  return new ToyPassConfig(*this, PM);
 +}
 +
 +bool ToyPassConfig::addInstSelector() {
-+  addPass(createToyISelDag(getTM<ToyTargetMachine>(),
-+                            getOptLevel()));
++  addPass(createToyISelDag(getTM<ToyTargetMachine>(), getOptLevel()));
 +  return false;
 +}
 +
-+void ToyPassConfig::addPreEmitPass() {
-+}
++void ToyPassConfig::addPreEmitPass() {}
 diff --git a/llvm/lib/Target/Toy/ToyTargetMachine.h b/llvm/lib/Target/Toy/ToyTargetMachine.h
 new file mode 100644
-index 000000000000..c9ddaa819489
+index 000000000000..1b41b0224a45
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/ToyTargetMachine.h
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,44 @@
 +//===-- ToyTargetMachine.h - Define TargetMachine for Toy ------*- C++ -*-===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -1588,28 +1570,22 @@ index 000000000000..c9ddaa819489
 +
 +class ToyTargetMachine : public LLVMTargetMachine {
 +  std::unique_ptr<TargetLoweringObjectFile> TLOF;
-+  mutable StringMap<std::unique_ptr<ToySubtarget>>
-+      SubtargetMap;
++  mutable StringMap<std::unique_ptr<ToySubtarget>> SubtargetMap;
 +
 +public:
-+  ToyTargetMachine(const Target &T, const Triple &TT,
-+                    StringRef CPU, StringRef FS,
-+                    const TargetOptions &Options,
-+                    std::optional<Reloc::Model> RM,
-+                    std::optional<CodeModel::Model> CM,
-+                    CodeGenOpt::Level OL, bool JIT);
++  ToyTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
++                   StringRef FS, const TargetOptions &Options,
++                   std::optional<Reloc::Model> RM,
++                   std::optional<CodeModel::Model> CM, CodeGenOptLevel OL,
++                   bool JIT);
 +  ~ToyTargetMachine() override;
 +
-+  TargetLoweringObjectFile *
-+  getObjFileLowering() const override {
++  TargetLoweringObjectFile *getObjFileLowering() const override {
 +    return TLOF.get();
 +  }
-+  const ToySubtarget *
-+  getSubtargetImpl(const Function &) const override;
++  const ToySubtarget *getSubtargetImpl(const Function &) const override;
 +
-+  TargetPassConfig *
-+  createPassConfig(PassManagerBase &PM) override;
-+
++  TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
 +};
 +
 +} // end namespace llvm

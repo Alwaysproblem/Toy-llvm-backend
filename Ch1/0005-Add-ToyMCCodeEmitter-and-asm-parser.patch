@@ -19,10 +19,10 @@ index 000000000000..1745c6ac3354
 +  )
 diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 new file mode 100644
-index 000000000000..63a9d6066594
+index 000000000000..31e473e047e0
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,327 @@
 +//===-- ToyAsmParser.cpp - Parse Toy assembly to MCInst instructions ----===//
 +//
 +// Part of the LLVM Project, under the Apache License
@@ -87,49 +87,38 @@ index 000000000000..63a9d6066594
 +    if (!Expr)
 +      Inst.addOperand(MCOperand::createImm(0));
 +    else if (auto *CE = dyn_cast<MCConstantExpr>(Expr))
-+      Inst.addOperand(
-+          MCOperand::createImm(CE->getValue()));
++      Inst.addOperand(MCOperand::createImm(CE->getValue()));
 +    else
 +      Inst.addOperand(MCOperand::createExpr(Expr));
 +  }
 +
 +public:
-+  ToyOperand(OperandKind Kind, SMLoc StartLoc,
-+              SMLoc EndLoc)
-+      : Kind(Kind), StartLoc(StartLoc), EndLoc(EndLoc) {
-+  }
++  ToyOperand(OperandKind Kind, SMLoc StartLoc, SMLoc EndLoc)
++      : Kind(Kind), StartLoc(StartLoc), EndLoc(EndLoc) {}
 +
 +  // getStartLoc - Gets location of the first token of
 +  // this operand
-+  SMLoc getStartLoc() const override {
-+    return StartLoc;
-+  }
++  SMLoc getStartLoc() const override { return StartLoc; }
 +
 +  // getEndLoc - Gets location of the last token of this
 +  // operand
 +  SMLoc getEndLoc() const override { return EndLoc; }
 +
-+  bool isReg() const override {
-+    return Kind == OpKind_Reg;
-+  }
++  bool isReg() const override { return Kind == OpKind_Reg; }
 +
-+  unsigned getReg() const override {
++  MCRegister getReg() const override {
 +    assert(isReg() && "Invalid type access!");
-+    return RegNo;
++    return MCRegister{RegNo};
 +  }
 +
-+  bool isImm() const override {
-+    return Kind == OpKind_Imm;
-+  }
++  bool isImm() const override { return Kind == OpKind_Imm; }
 +
 +  const MCExpr *getImm() const {
 +    assert(isImm() && "Invalid type access!");
 +    return Imm;
 +  }
 +
-+  bool isToken() const override {
-+    return Kind == OpKind_Token;
-+  }
++  bool isToken() const override { return Kind == OpKind_Token; }
 +
 +  StringRef getToken() const {
 +    assert(isToken() && "Not a token");
@@ -138,28 +127,22 @@ index 000000000000..63a9d6066594
 +
 +  bool isMem() const override { return false; }
 +
-+  static std::unique_ptr<ToyOperand>
-+  createToken(StringRef Str, SMLoc Loc) {
-+    auto Op = std::make_unique<ToyOperand>(
-+        OpKind_Token, Loc, Loc);
++  static std::unique_ptr<ToyOperand> createToken(StringRef Str, SMLoc Loc) {
++    auto Op = std::make_unique<ToyOperand>(OpKind_Token, Loc, Loc);
 +    Op->Token = Str;
 +    return Op;
 +  }
 +
-+  static std::unique_ptr<ToyOperand>
-+  createReg(unsigned Num, SMLoc StartLoc,
-+            SMLoc EndLoc) {
-+    auto Op = std::make_unique<ToyOperand>(
-+        OpKind_Reg, StartLoc, EndLoc);
++  static std::unique_ptr<ToyOperand> createReg(unsigned Num, SMLoc StartLoc,
++                                               SMLoc EndLoc) {
++    auto Op = std::make_unique<ToyOperand>(OpKind_Reg, StartLoc, EndLoc);
 +    Op->RegNo = Num;
 +    return Op;
 +  }
 +
-+  static std::unique_ptr<ToyOperand>
-+  createImm(const MCExpr *Expr, SMLoc StartLoc,
-+            SMLoc EndLoc) {
-+    auto Op = std::make_unique<ToyOperand>(
-+        OpKind_Imm, StartLoc, EndLoc);
++  static std::unique_ptr<ToyOperand> createImm(const MCExpr *Expr,
++                                               SMLoc StartLoc, SMLoc EndLoc) {
++    auto Op = std::make_unique<ToyOperand>(OpKind_Imm, StartLoc, EndLoc);
 +    Op->Imm = Expr;
 +    return Op;
 +  }
@@ -185,9 +168,7 @@ index 000000000000..63a9d6066594
 +      OS << "Token: " << getToken() << "\n";
 +      break;
 +    case OpKind_Reg:
-+      OS << "Reg: "
-+         << ToyInstPrinter::getRegisterName(getReg())
-+         << "\n";
++      OS << "Reg: " << ToyInstPrinter::getRegisterName(getReg()) << "\n";
 +      break;
 +    }
 +  }
@@ -201,37 +182,29 @@ index 000000000000..63a9d6066594
 +  MCAsmParser &Parser;
 +  const MCSubtargetInfo &SubtargetInfo;
 +
-+  bool
-+  ParseInstruction(ParseInstructionInfo &Info,
-+                   StringRef Name, SMLoc NameLoc,
-+                   OperandVector &Operands) override;
++  bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
++                        SMLoc NameLoc, OperandVector &Operands) override;
 +  bool parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
 +                     SMLoc &EndLoc) override;
-+  OperandMatchResultTy
-+  tryParseRegister(MCRegister &RegNo, SMLoc &StartLoc,
-+                   SMLoc &EndLoc) override;
++  ParseStatus tryParseRegister(MCRegister &RegNo, SMLoc &StartLoc,
++                               SMLoc &EndLoc) override;
 +
-+  bool parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
-+                     SMLoc &EndLoc,
++  bool parseRegister(MCRegister &RegNo, SMLoc &StartLoc, SMLoc &EndLoc,
 +                     bool RestoreOnFailure);
-+  bool parseOperand(OperandVector &Operands,
-+                    StringRef Mnemonic);
++  bool parseOperand(OperandVector &Operands, StringRef Mnemonic);
 +
-+  bool MatchAndEmitInstruction(
-+      SMLoc IdLoc, unsigned &Opcode,
-+      OperandVector &Operands, MCStreamer &Out,
-+      uint64_t &ErrorInfo,
-+      bool MatchingInlineAsm) override;
++  bool MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
++                               OperandVector &Operands, MCStreamer &Out,
++                               uint64_t &ErrorInfo,
++                               bool MatchingInlineAsm) override;
 +
 +public:
-+  ToyAsmParser(const MCSubtargetInfo &STI,
-+                MCAsmParser &Parser,
-+                const MCInstrInfo &MII,
-+                const MCTargetOptions &Options)
-+      : MCTargetAsmParser(Options, STI, MII),
-+        Parser(Parser), SubtargetInfo(STI) {
-+    setAvailableFeatures(ComputeAvailableFeatures(
-+        SubtargetInfo.getFeatureBits()));
++  ToyAsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
++               const MCInstrInfo &MII, const MCTargetOptions &Options)
++      : MCTargetAsmParser(Options, STI, MII), Parser(Parser),
++        SubtargetInfo(STI) {
++    setAvailableFeatures(
++        ComputeAvailableFeatures(SubtargetInfo.getFeatureBits()));
 +  }
 +};
 +
@@ -241,33 +214,28 @@ index 000000000000..63a9d6066594
 +#define GET_MATCHER_IMPLEMENTATION
 +#include "ToyGenAsmMatcher.inc"
 +
-+bool ToyAsmParser::ParseInstruction(
-+    ParseInstructionInfo &Info, StringRef Name,
-+    SMLoc NameLoc, OperandVector &Operands) {
++bool ToyAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
++                                    SMLoc NameLoc, OperandVector &Operands) {
 +  // First operand in MCInst is instruction mnemonic.
-+  Operands.push_back(
-+      ToyOperand::createToken(Name, NameLoc));
++  Operands.push_back(ToyOperand::createToken(Name, NameLoc));
 +
 +  // Read the remaining operands.
 +  if (getLexer().isNot(AsmToken::EndOfStatement)) {
 +
 +    // Read the first operand.
 +    if (parseOperand(Operands, Name)) {
-+      return Error(getLexer().getLoc(),
-+                   "expected operand");
++      return Error(getLexer().getLoc(), "expected operand");
 +    }
 +
 +    // Read the following operands.
 +    while (getLexer().is(AsmToken::Comma)) {
 +      Parser.Lex();
 +      if (parseOperand(Operands, Name)) {
-+        return Error(getLexer().getLoc(),
-+                     "expected operand");
++        return Error(getLexer().getLoc(), "expected operand");
 +      }
 +    }
 +    if (getLexer().isNot(AsmToken::EndOfStatement))
-+      return Error(getLexer().getLoc(),
-+                   "unexpected token in argument list");
++      return Error(getLexer().getLoc(), "unexpected token in argument list");
 +  }
 +
 +  // Consume the EndOfStatement.
@@ -275,8 +243,7 @@ index 000000000000..63a9d6066594
 +  return false;
 +}
 +
-+bool ToyAsmParser::parseOperand(
-+    OperandVector &Operands, StringRef Mnemonic) {
++bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
 +  // Check if it is a register.
 +  if (Parser.getTok().is(AsmToken::Identifier)) {
 +    MCRegister RegNo;
@@ -284,8 +251,7 @@ index 000000000000..63a9d6066594
 +    if (parseRegister(RegNo, StartLoc, EndLoc,
 +                      /*RestoreOnFailure=*/false))
 +      return true;
-+    Operands.push_back(ToyOperand::createReg(
-+        RegNo, StartLoc, EndLoc));
++    Operands.push_back(ToyOperand::createReg(RegNo, StartLoc, EndLoc));
 +    return false;
 +  }
 +
@@ -296,8 +262,7 @@ index 000000000000..63a9d6066594
 +    if (Parser.parseExpression(Expr))
 +      return true;
 +    SMLoc EndLoc = Parser.getTok().getLoc();
-+    Operands.push_back(
-+        ToyOperand::createImm(Expr, StartLoc, EndLoc));
++    Operands.push_back(ToyOperand::createImm(Expr, StartLoc, EndLoc));
 +    return false;
 +  }
 +  // Failure
@@ -305,9 +270,8 @@ index 000000000000..63a9d6066594
 +}
 +
 +// Parses register of form %(r|x|cr|fcr)<No>.
-+bool ToyAsmParser::parseRegister(
-+    MCRegister &RegNo, SMLoc &StartLoc, SMLoc &EndLoc,
-+    bool RestoreOnFailure) {
++bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
++                                 SMLoc &EndLoc, bool RestoreOnFailure) {
 +  StartLoc = Parser.getTok().getLoc();
 +
 +  // Eat the '%' prefix.
@@ -317,8 +281,7 @@ index 000000000000..63a9d6066594
 +  // Parser.Lex();
 +  // Match the register.
 +  if (Parser.getTok().isNot(AsmToken::Identifier) ||
-+      (RegNo = MatchRegisterName(
-+           Parser.getTok().getIdentifier())) == 0) {
++      (RegNo = MatchRegisterName(Parser.getTok().getIdentifier())) == 0) {
 +    // if (RestoreOnFailure)
 +    //   Parser.getLexer().UnLex(PercentTok);
 +    return Error(StartLoc, "invalid register");
@@ -329,36 +292,33 @@ index 000000000000..63a9d6066594
 +  return false;
 +}
 +
-+bool ToyAsmParser::parseRegister(MCRegister &RegNo,
-+                                  SMLoc &StartLoc,
-+                                  SMLoc &EndLoc) {
++bool ToyAsmParser::parseRegister(MCRegister &RegNo, SMLoc &StartLoc,
++                                 SMLoc &EndLoc) {
 +  return parseRegister(RegNo, StartLoc, EndLoc,
 +                       /*RestoreOnFailure=*/false);
 +}
 +
-+OperandMatchResultTy ToyAsmParser::tryParseRegister(
-+    MCRegister &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) {
-+  bool Result =
-+      parseRegister(RegNo, StartLoc, EndLoc,
-+                    /*RestoreOnFailure=*/true);
++ParseStatus ToyAsmParser::tryParseRegister(MCRegister &RegNo, SMLoc &StartLoc,
++                                           SMLoc &EndLoc) {
++  bool Result = parseRegister(RegNo, StartLoc, EndLoc,
++                              /*RestoreOnFailure=*/true);
 +  bool PendingErrors = getParser().hasPendingError();
 +  getParser().clearPendingErrors();
 +  if (PendingErrors)
-+    return MatchOperand_ParseFail;
++    return ParseStatus::Failure;
 +  if (Result)
-+    return MatchOperand_NoMatch;
-+  return MatchOperand_Success;
++    return ParseStatus::NoMatch;
++  return ParseStatus::Success;
 +}
 +
-+bool ToyAsmParser::MatchAndEmitInstruction(
-+    SMLoc IdLoc, unsigned &Opcode,
-+    OperandVector &Operands, MCStreamer &Out,
-+    uint64_t &ErrorInfo, bool MatchingInlineAsm) {
++bool ToyAsmParser::MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
++                                           OperandVector &Operands,
++                                           MCStreamer &Out, uint64_t &ErrorInfo,
++                                           bool MatchingInlineAsm) {
 +  MCInst Inst;
 +  SMLoc ErrorLoc;
 +
-+  switch (MatchInstructionImpl(
-+      Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
++  switch (MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
 +  case Match_Success:
 +    Out.emitInstruction(Inst, SubtargetInfo);
 +    Opcode = Inst.getOpcode();
@@ -367,22 +327,18 @@ index 000000000000..63a9d6066594
 +    return Error(IdLoc, "Instruction use requires "
 +                        "option to be enabled");
 +  case Match_MnemonicFail:
-+    return Error(IdLoc,
-+                 "Unrecognized instruction mnemonic");
++    return Error(IdLoc, "Unrecognized instruction mnemonic");
 +  case Match_InvalidOperand: {
 +    ErrorLoc = IdLoc;
 +    if (ErrorInfo != ~0U) {
 +      if (ErrorInfo >= Operands.size())
-+        return Error(
-+            IdLoc, "Too few operands for instruction");
++        return Error(IdLoc, "Too few operands for instruction");
 +
-+      ErrorLoc = ((ToyOperand &)*Operands[ErrorInfo])
-+                     .getStartLoc();
++      ErrorLoc = ((ToyOperand &)*Operands[ErrorInfo]).getStartLoc();
 +      if (ErrorLoc == SMLoc())
 +        ErrorLoc = IdLoc;
 +    }
-+    return Error(ErrorLoc,
-+                 "Invalid operand for instruction");
++    return Error(ErrorLoc, "Invalid operand for instruction");
 +  }
 +  default:
 +    break;
@@ -391,13 +347,11 @@ index 000000000000..63a9d6066594
 +  llvm_unreachable("Unknown match type detected!");
 +}
 +
-+extern "C" LLVM_EXTERNAL_VISIBILITY void
-+LLVMInitializeToyAsmParser() {
-+  RegisterMCAsmParser<ToyAsmParser> X(
-+      getTheToyTarget());
++extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyAsmParser() {
++  RegisterMCAsmParser<ToyAsmParser> X(getTheToyTarget());
 +}
 diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
-index 934d352d84b1..e3178873c088 100644
+index 934d352d84b1..8b8be1608697 100644
 --- a/llvm/lib/Target/Toy/CMakeLists.txt
 +++ b/llvm/lib/Target/Toy/CMakeLists.txt
 @@ -2,7 +2,9 @@ add_llvm_component_group(Toy)
@@ -410,28 +364,28 @@ index 934d352d84b1..e3178873c088 100644
  tablegen(LLVM ToyGenDisassemblerTables.inc -gen-disassembler)
  tablegen(LLVM ToyGenInstrInfo.inc -gen-instr-info)
  tablegen(LLVM ToyGenRegisterInfo.inc -gen-register-info)
-@@ -16,6 +18,7 @@ add_llvm_target(ToyCodeGen
-   ADD_TO_COMPONENT
+@@ -17,5 +19,6 @@ add_llvm_target(ToyCodeGen
    Toy
    )
--
-+  
+ 
 +add_subdirectory(AsmParser)
  add_subdirectory(TargetInfo)
  add_subdirectory(MCTargetDesc)
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
-index eac4af91ed25..12ad1b6bfe51 100644
+index eac4af91ed25..a0b51741bbb6 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
-@@ -1,5 +1,8 @@
+@@ -1,6 +1,9 @@
  add_llvm_component_library(LLVMToyDesc
    ToyMCTargetDesc.cpp
+-
 +  ToyMCCodeEmitter.cpp
 +  ToyInstPrinter.cpp
 +  ToyMCAsmInfo.cpp
- 
++ 
    LINK_COMPONENTS
    MC
+   Support
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.cpp
 new file mode 100644
 index 000000000000..ab668676a7ff
@@ -573,7 +527,7 @@ index 000000000000..d3322c216222
 +}
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmInfo.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmInfo.h
 new file mode 100644
-index 000000000000..0d88631270ad
+index 000000000000..cd546847163b
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmInfo.h
 @@ -0,0 +1,25 @@
@@ -601,13 +555,13 @@ index 000000000000..0d88631270ad
 +
 +} // end namespace llvm
 +
-+#endif
++#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCASMINFO_H
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
 new file mode 100644
-index 000000000000..f890748e9980
+index 000000000000..3927dd8286f1
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,97 @@
 +//===-- ToyMCCodeEmitter.cpp - Convert Toy code to machine code ---------===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -655,7 +609,7 @@ index 000000000000..f890748e9980
 +  ~ToyMCCodeEmitter() override = default;
 +
 +  // OVerride MCCodeEmitter.
-+  void encodeInstruction(const MCInst &MI, raw_ostream &OS,
++  void encodeInstruction(const MCInst &MI, SmallVectorImpl<char> &CB,
 +                         SmallVectorImpl<MCFixup> &Fixups,
 +                         const MCSubtargetInfo &STI) const override;
 +
@@ -675,7 +629,8 @@ index 000000000000..f890748e9980
 +
 +} // end anonymous namespace
 +
-+void ToyMCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
++void ToyMCCodeEmitter::encodeInstruction(const MCInst &MI,
++                                         SmallVectorImpl<char> &CB,
 +                                         SmallVectorImpl<MCFixup> &Fixups,
 +                                         const MCSubtargetInfo &STI) const {
 +  LLVM_DEBUG(dbgs() << MI);
@@ -683,7 +638,7 @@ index 000000000000..f890748e9980
 +  uint32_t Bits = getBinaryCodeForInstr(MI, Fixups, STI);
 +  ++MCNumEmitted; // Keep track of the number of emitted insns.
 +
-+  support::endian::write(OS, Bits, support::little);
++  support::endian::write(CB, Bits, endianness::little);
 +}
 +
 +unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
@@ -705,50 +660,49 @@ index 000000000000..f890748e9980
 +  return new ToyMCCodeEmitter(MCII, Ctx);
 +}
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
-index f51b6a6f654f..841bbcc23cb2 100644
+index b4093077caef..59328844e4d7 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
-@@ -7,7 +7,10 @@
- //===----------------------------------------------------------------------===//
+@@ -8,6 +8,9 @@
  
  #include "ToyMCTargetDesc.h"
+ #include "TargetInfo/ToyTargetInfo.h"
 +#include "ToyInstPrinter.h"
 +#include "ToyMCAsmInfo.h"
- #include "TargetInfo/ToyTargetInfo.h"
 +#include "llvm/CodeGen/TargetRegisterInfo.h"
  #include "llvm/MC/MCInstrInfo.h"
  #include "llvm/MC/MCRegisterInfo.h"
  #include "llvm/MC/MCStreamer.h"
-@@ -42,8 +45,28 @@ static MCSubtargetInfo *createToyMCSubtargetInfo(const Triple &TT,
+@@ -42,7 +45,28 @@ static MCSubtargetInfo *createToyMCSubtargetInfo(const Triple &TT,
    return createToyMCSubtargetInfoImpl(TT, CPU, /*TuneCPU*/ CPU, FS);
  }
  
 +static MCAsmInfo *createToyMCAsmInfo(const MCRegisterInfo &MRI,
-+                                      const Triple &TT,
-+                                      const MCTargetOptions &Options) {
++                                     const Triple &TT,
++                                     const MCTargetOptions &Options) {
 +  MCAsmInfo *MAI = new ToyMCAsmInfo(TT);
 +  return MAI;
 +}
 +
 +static MCInstPrinter *createToyMCInstPrinter(const Triple &T,
-+                                              unsigned SyntaxVariant,
-+                                              const MCAsmInfo &MAI,
-+                                              const MCInstrInfo &MII,
-+                                              const MCRegisterInfo &MRI) {
++                                             unsigned SyntaxVariant,
++                                             const MCAsmInfo &MAI,
++                                             const MCInstrInfo &MII,
++                                             const MCRegisterInfo &MRI) {
 +  return new ToyInstPrinter(MAI, MII, MRI);
 +}
- 
++
  extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
-+  // Registert the MC asm info.
++  // Register the MC asm info.
 +  TargetRegistry::RegisterMCAsmInfo(getTheToyTarget(), createToyMCAsmInfo);
 +
 +  // Register the MCCodeEmitter.
 +  TargetRegistry::RegisterMCCodeEmitter(getTheToyTarget(),
 +                                        createToyMCCodeEmitter);
    // Register the MCInstrInfo.
-   TargetRegistry::RegisterMCInstrInfo(getTheToyTarget(),
-                                       createToyMCInstrInfo);
-@@ -53,4 +76,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
+   TargetRegistry::RegisterMCInstrInfo(getTheToyTarget(), createToyMCInstrInfo);
+   // Register the MCRegisterInfo.
+@@ -50,4 +74,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
    // Register the MCSubtargetInfo.
    TargetRegistry::RegisterMCSubtargetInfo(getTheToyTarget(),
                                            createToyMCSubtargetInfo);
@@ -757,10 +711,10 @@ index f51b6a6f654f..841bbcc23cb2 100644
 +                                        createToyMCInstPrinter);
  }
 diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
-index 3e5608dc1536..60e02d1a4397 100644
+index 4f4bc449e85a..4213a6c13c29 100644
 --- a/llvm/lib/Target/Toy/Toy.td
 +++ b/llvm/lib/Target/Toy/Toy.td
-@@ -28,6 +28,12 @@ include "ToyInstrInfo.td"
+@@ -27,6 +27,12 @@ include "ToyInstrInfo.td"
  //===----------------------------------------------------------------------===//
  
  def ToyInstrInfo : InstrInfo;

@@ -1,5 +1,5 @@
 diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
-index 7ed0c079644c..e19a89033902 100644
+index 65561180750d..05fee7ca7f49 100644
 --- a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 +++ b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 @@ -12,6 +12,7 @@
@@ -24,35 +24,12 @@ index 7ed0c079644c..e19a89033902 100644
    MCAsmParser &Parser;
    const MCSubtargetInfo &SubtargetInfo;
  
-@@ -276,12 +284,7 @@ bool ToyAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
-       }
-       getLexer().Lex(); // Eat the '(' token.
- 
--      // std::string At = "@";
-       StringRef AddressAlias = Parser.getTok().getIdentifier();
--      // At += AddressAlias;
--      // const AsmToken AtTok(AsmToken::At, At.data());
--      // getLexer().UnLex(AtTok); // Unlex the '@' token.
--
-       if (Parser.parseExpression(Expr))
-         return true;
- 
-@@ -378,6 +381,7 @@ bool ToyAsmParser::MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
- 
-   switch (MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
-   case Match_Success:
-+    Inst.setLoc(IdLoc);
-     Out.emitInstruction(Inst, SubtargetInfo);
-     Opcode = Inst.getOpcode();
-     return false;
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
-index b402090c8a9a..75a29ecbe41a 100644
+index 61efe2a7dd5c..64fb2769caa1 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
-@@ -1,9 +1,12 @@
- add_llvm_component_library(LLVMToyDesc
--  ToyMCTargetDesc.cpp
--  ToyMCCodeEmitter.cpp
+@@ -3,7 +3,12 @@ add_llvm_component_library(LLVMToyDesc
+   ToyMCCodeEmitter.cpp
    ToyInstPrinter.cpp
    ToyMCAsmInfo.cpp
 +  ToyMCAsmBackend.cpp
@@ -61,15 +38,15 @@ index b402090c8a9a..75a29ecbe41a 100644
 +  ToyMCObjectWriter.cpp
 +  ToyMCTargetDesc.cpp
 +  ToyTargetStreamer.cpp
- 
+  
    LINK_COMPONENTS
    MC
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp
 new file mode 100644
-index 000000000000..7064f46027f7
+index 000000000000..c9aa44455a93
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,112 @@
 +//===-- ToyMCAsmBackend.cpp - Toy assembler backend ---------------------===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -110,7 +87,7 @@ index 000000000000..7064f46027f7
 +
 +public:
 +  ToyMCAsmBackend(uint8_t OSABI)
-+      : MCAsmBackend(support::little), OSABI(OSABI){};
++      : MCAsmBackend(endianness::little), OSABI(OSABI){};
 +
 +  // Override MCAsmBackend
 +  unsigned getNumFixupKinds() const override;
@@ -124,9 +101,9 @@ index 000000000000..7064f46027f7
 +
 +  bool mayNeedRelaxation(const MCInst &Inst,
 +                         const MCSubtargetInfo &STI) const override;
-+  bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
-+                            const MCRelaxableFragment *Fragment,
-+                            const MCAsmLayout &Layout) const override;
++
++  bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value) const;
++
 +  bool writeNopData(raw_ostream &OS, uint64_t Count,
 +                    const MCSubtargetInfo *STI) const override;
 +
@@ -164,9 +141,8 @@ index 000000000000..7064f46027f7
 +  return false;
 +}
 +
-+bool ToyMCAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
-+                                           const MCRelaxableFragment *Fragment,
-+                                           const MCAsmLayout &Layout) const {
++bool ToyMCAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup,
++                                           uint64_t Value) const {
 +  return false;
 +}
 +
@@ -184,7 +160,7 @@ index 000000000000..7064f46027f7
 +  return new ToyMCAsmBackend(OSABI);
 +}
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
-index c60b3d020694..655443657999 100644
+index 30f9f4c3275c..4304970c11db 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
 @@ -10,6 +10,7 @@
@@ -195,8 +171,8 @@ index c60b3d020694..655443657999 100644
  #include "MCTargetDesc/ToyMCTargetDesc.h"
  #include "ToyMCExpr.h"
  #include "llvm/ADT/SmallVector.h"
-@@ -78,6 +79,25 @@ void ToyMCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
-   support::endian::write(OS, Bits, support::little);
+@@ -79,6 +80,25 @@ void ToyMCCodeEmitter::encodeInstruction(const MCInst &MI,
+   support::endian::write(CB, Bits, endianness::little);
  }
  
 +static Toy::FixupKind fixupKind(const MCExpr *Expr) {
@@ -221,7 +197,7 @@ index c60b3d020694..655443657999 100644
  unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
                                               const MCOperand &MO,
                                               SmallVectorImpl<MCFixup> &Fixups,
-@@ -91,9 +111,7 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
+@@ -92,9 +112,7 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
    const MCExpr *Expr = MO.getExpr();
    assert(isa<ToyMCExpr>(Expr) && "Expected ToyMCExpr");
  
@@ -270,7 +246,7 @@ index 000000000000..8d46cd82b3e8
 +#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCFIXUPS_H
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp
 new file mode 100644
-index 000000000000..f9eae2fa68fc
+index 000000000000..0b4b51101398
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp
 @@ -0,0 +1,78 @@
@@ -311,7 +287,7 @@ index 000000000000..f9eae2fa68fc
 +
 +  unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
 +                        const MCFixup &Fixup, bool IsPCRel) const override;
-+  bool needsRelocateWithSymbol(const MCSymbol &Sym,
++  bool needsRelocateWithSymbol(const MCValue &Val, const MCSymbol &Sym,
 +                               unsigned Type) const override {
 +    return true;
 +  }
@@ -353,7 +329,7 @@ index 000000000000..f9eae2fa68fc
 +  return std::make_unique<ToyObjectWriter>(OSABI);
 +}
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
-index 3fbb12134e3c..3da872e52c3c 100644
+index 59328844e4d7..880e95b67843 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
 @@ -10,6 +10,7 @@
@@ -364,14 +340,13 @@ index 3fbb12134e3c..3da872e52c3c 100644
  #include "llvm/CodeGen/TargetRegisterInfo.h"
  #include "llvm/MC/MCInstrInfo.h"
  #include "llvm/MC/MCRegisterInfo.h"
-@@ -60,6 +61,18 @@ static MCInstPrinter *createToyMCInstPrinter(const Triple &T,
+@@ -60,6 +61,17 @@ static MCInstPrinter *createToyMCInstPrinter(const Triple &T,
    return new ToyInstPrinter(MAI, MII, MRI);
  }
  
 +static MCTargetStreamer *createToyAsmTargetStreamer(MCStreamer &S,
 +                                                    formatted_raw_ostream &OS,
-+                                                    MCInstPrinter *InstPrint,
-+                                                    bool IsVerboseAsm) {
++                                                    MCInstPrinter *InstPrint) {
 +  return new ToyTargetAsmStreamer(S, OS);
 +}
 +
@@ -381,9 +356,9 @@ index 3fbb12134e3c..3da872e52c3c 100644
 +}
 +
  extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
-   // Registert the MC asm info.
+   // Register the MC asm info.
    TargetRegistry::RegisterMCAsmInfo(getTheToyTarget(), createToyMCAsmInfo);
-@@ -77,4 +90,13 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
+@@ -77,4 +89,13 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
    // Register the MCInstPrinter.
    TargetRegistry::RegisterMCInstPrinter(getTheToyTarget(),
                                          createToyMCInstPrinter);
@@ -399,10 +374,10 @@ index 3fbb12134e3c..3da872e52c3c 100644
  }
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp
 new file mode 100644
-index 000000000000..9ec66b796ef4
+index 000000000000..58bf17c694e5
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,47 @@
 +//===- ToyTargetStreamer.cpp - ToyTargetStreamer class ------------------===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -444,17 +419,18 @@ index 000000000000..9ec66b796ef4
 +}
 +
 +void ToyTargetELFStreamer::finish() {
-+  MCAssembler &MCA = getStreamer().getAssembler();
-+  unsigned EFlags = MCA.getELFHeaderEFlags();
++  ToyTargetStreamer::finish();
++  ELFObjectWriter &W = getStreamer().getWriter();
++  unsigned EFlags = W.getELFHeaderEFlags();
 +  EFlags |= ELF::EF_RISCV_FLOAT_ABI_DOUBLE;
-+  MCA.setELFHeaderEFlags(EFlags);
++  W.setELFHeaderEFlags(EFlags);
 +}
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h
 new file mode 100644
-index 000000000000..e834ae9d7444
+index 000000000000..11322ad503d0
 --- /dev/null
 +++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,47 @@
 +//===-- ToyTargetStreamer.h - Toy Target Streamer ------------*- C++ -*--===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -477,6 +453,8 @@ index 000000000000..e834ae9d7444
 +public:
 +  ToyTargetStreamer(MCStreamer &S);
 +  ~ToyTargetStreamer() override;
++
++  void finish() override {};
 +};
 +
 +class ToyTargetAsmStreamer : public ToyTargetStreamer {
@@ -500,9 +478,8 @@ index 000000000000..e834ae9d7444
 +} // end namespace llvm
 +
 +#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYTARGETSTREAMER_H
-\ No newline at end of file
 diff --git a/llvm/lib/Target/Toy/ToyRegisterInfo.td b/llvm/lib/Target/Toy/ToyRegisterInfo.td
-index 70365fb547a5..f2d6eccbb63f 100644
+index 214335280c81..f2d6eccbb63f 100644
 --- a/llvm/lib/Target/Toy/ToyRegisterInfo.td
 +++ b/llvm/lib/Target/Toy/ToyRegisterInfo.td
 @@ -11,41 +11,41 @@ class ToyReg<bits<5> Enc, string n> : Register<n> {
@@ -510,32 +487,32 @@ index 70365fb547a5..f2d6eccbb63f 100644
  }
  
 -def ZERO : ToyReg<0, "zero">;
--def RA :   ToyReg<1, "ra">;
--def SP :   ToyReg<2, "sp">;
+-def RA   : ToyReg<1, "ra">;
+-def SP   : ToyReg<2, "sp">;
 +def ZERO :   ToyReg<0, "zero">,    DwarfRegNum<[0]>;
 +def RA   :   ToyReg<1, "ra">,      DwarfRegNum<[1]>;
 +def SP   :   ToyReg<2, "sp">,      DwarfRegNum<[2]>;
  
--def T0 : ToyReg<5, "t0">;
--def T1 : ToyReg<6, "t1">;
--def T2 : ToyReg<7, "t2">;
+-def T0   : ToyReg<5, "t0">;
+-def T1   : ToyReg<6, "t1">;
+-def T2   : ToyReg<7, "t2">;
 +def T0   :   ToyReg<5, "t0">,      DwarfRegNum<[5]>;
 +def T1   :   ToyReg<6, "t1">,      DwarfRegNum<[6]>;
 +def T2   :   ToyReg<7, "t2">,      DwarfRegNum<[7]>;
  
--def S0 : ToyReg<8, "s0">;
--def S1 : ToyReg<9, "s1">;
+-def S0   : ToyReg<8, "s0">;
+-def S1   : ToyReg<9, "s1">;
 +def S0   :   ToyReg<8, "s0">,      DwarfRegNum<[8]>;
 +def S1   :   ToyReg<9, "s1">,      DwarfRegNum<[9]>;
  
--def A0 : ToyReg<10, "a0">;
--def A1 : ToyReg<11, "a1">;
--def A2 : ToyReg<12, "a2">;
--def A3 : ToyReg<13, "a3">;
--def A4 : ToyReg<14, "a4">;
--def A5 : ToyReg<15, "a5">;
--def A6 : ToyReg<16, "a6">;
--def A7 : ToyReg<17, "a7">;
+-def A0   : ToyReg<10, "a0">;
+-def A1   : ToyReg<11, "a1">;
+-def A2   : ToyReg<12, "a2">;
+-def A3   : ToyReg<13, "a3">;
+-def A4   : ToyReg<14, "a4">;
+-def A5   : ToyReg<15, "a5">;
+-def A6   : ToyReg<16, "a6">;
+-def A7   : ToyReg<17, "a7">;
 +def A0   :   ToyReg<10, "a0">,     DwarfRegNum<[10]>;
 +def A1   :   ToyReg<11, "a1">,     DwarfRegNum<[11]>;
 +def A2   :   ToyReg<12, "a2">,     DwarfRegNum<[12]>;
@@ -545,26 +522,26 @@ index 70365fb547a5..f2d6eccbb63f 100644
 +def A6   :   ToyReg<16, "a6">,     DwarfRegNum<[16]>;
 +def A7   :   ToyReg<17, "a7">,     DwarfRegNum<[17]>;
  
--def FT0: ToyReg<0, "ft0">;
--def FT1: ToyReg<1, "ft1">;
--def FT2: ToyReg<2, "ft2">;
+-def FT0  : ToyReg<0, "ft0">;
+-def FT1  : ToyReg<1, "ft1">;
+-def FT2  : ToyReg<2, "ft2">;
 +def FT0  :   ToyReg<0, "ft0">,     DwarfRegNum<[0]>;
 +def FT1  :   ToyReg<1, "ft1">,     DwarfRegNum<[1]>;
 +def FT2  :   ToyReg<2, "ft2">,     DwarfRegNum<[2]>;
  
--def FS0: ToyReg<8, "fS0">;
--def FS1: ToyReg<9, "fS1">;
+-def FS0  : ToyReg<8, "fS0">;
+-def FS1  : ToyReg<9, "fS1">;
 +def FS0  :   ToyReg<8, "fS0">,     DwarfRegNum<[8]>;
 +def FS1  :   ToyReg<9, "fS1">,     DwarfRegNum<[9]>;
  
--def FA0: ToyReg<10, "fa0">;
--def FA1: ToyReg<11, "fa1">;
--def FA2: ToyReg<12, "fa2">;
--def FA3: ToyReg<13, "fa3">;
--def FA4: ToyReg<14, "fa4">;
--def FA5: ToyReg<15, "fa5">;
--def FA6: ToyReg<16, "fa6">;
--def FA7: ToyReg<17, "fa7">;
+-def FA0  : ToyReg<10, "fa0">;
+-def FA1  : ToyReg<11, "fa1">;
+-def FA2  : ToyReg<12, "fa2">;
+-def FA3  : ToyReg<13, "fa3">;
+-def FA4  : ToyReg<14, "fa4">;
+-def FA5  : ToyReg<15, "fa5">;
+-def FA6  : ToyReg<16, "fa6">;
+-def FA7  : ToyReg<17, "fa7">;
 +def FA0  :   ToyReg<10, "fa0">,    DwarfRegNum<[10]>;
 +def FA1  :   ToyReg<11, "fa1">,    DwarfRegNum<[11]>;
 +def FA2  :   ToyReg<12, "fa2">,    DwarfRegNum<[12]>;
