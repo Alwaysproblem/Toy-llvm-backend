@@ -1,3 +1,26 @@
+From 94747d402c336f19a8e183efae7a0c2b34ff9210 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 14:26:24 +0000
+Subject: [PATCH 15/17] 0017-write-to-obj.patch
+
+---
+ .../lib/Target/Toy/AsmParser/ToyAsmParser.cpp |   8 ++
+ .../Target/Toy/MCTargetDesc/CMakeLists.txt    |   5 +
+ .../Toy/MCTargetDesc/ToyMCAsmBackend.cpp      | 112 ++++++++++++++++++
+ .../Toy/MCTargetDesc/ToyMCCodeEmitter.cpp     |  24 +++-
+ .../lib/Target/Toy/MCTargetDesc/ToyMCFixups.h |  30 +++++
+ .../Toy/MCTargetDesc/ToyMCObjectWriter.cpp    |  78 ++++++++++++
+ .../Toy/MCTargetDesc/ToyMCTargetDesc.cpp      |  21 ++++
+ .../Toy/MCTargetDesc/ToyTargetStreamer.cpp    |  47 ++++++++
+ .../Toy/MCTargetDesc/ToyTargetStreamer.h      |  47 ++++++++
+ llvm/lib/Target/Toy/ToyRegisterInfo.td        |  58 ++++-----
+ 10 files changed, 398 insertions(+), 32 deletions(-)
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCFixups.h
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h
+
 diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 index 65561180750d..05fee7ca7f49 100644
 --- a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
@@ -553,3 +576,6 @@ index 214335280c81..f2d6eccbb63f 100644
  
  def GPR:RegisterClass<"Toy", [i32], 32, (add
      ZERO, RA, SP,
+-- 
+2.34.1
+

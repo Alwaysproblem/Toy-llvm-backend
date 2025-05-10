@@ -1,3 +1,14 @@
+From 0bf41c6012f979a85c6785b8659a5bb3cef2f3c2 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:03:24 +0000
+Subject: [PATCH 07/17] 0009-store-and-load.patch
+
+---
+ .../Toy/Disassembler/ToyDisassembler.cpp      | 43 ++++++++++++-
+ llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp       | 24 ++++++++
+ llvm/lib/Target/Toy/ToyInstrInfo.td           | 61 +++++++++++++++++--
+ 3 files changed, 121 insertions(+), 7 deletions(-)
+
 diff --git a/llvm/lib/Target/Toy/Disassembler/ToyDisassembler.cpp b/llvm/lib/Target/Toy/Disassembler/ToyDisassembler.cpp
 index 5e3e0938c2e1..1a03d24825d3 100644
 --- a/llvm/lib/Target/Toy/Disassembler/ToyDisassembler.cpp
@@ -181,3 +192,6 @@ index d06cb338a639..ee42da79a36f 100644
 +defm LOADH  : LOAD<0b0000011, 0b001, extloadi16, "lh",  GPR>;
 +defm LOADF  : LOAD<0b0000111, 0b010, load,       "flw", FPR>;
 +defm LOADD  : LOAD<0b0000111, 0b011, load,       "fld", FPR64>;
+-- 
+2.34.1
+

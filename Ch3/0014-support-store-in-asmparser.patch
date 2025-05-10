@@ -1,3 +1,15 @@
+From 8d72f6041a51ba49adca68f5fadbf0779021e48c Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 13:18:07 +0000
+Subject: [PATCH 14/17] 0016-support-store-in-asmparser.patch
+
+---
+ .../lib/Target/Toy/AsmParser/ToyAsmParser.cpp | 118 +++++++++++++++---
+ .../Toy/MCTargetDesc/ToyMCCodeEmitter.cpp     |   5 +-
+ .../lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp |   2 +-
+ llvm/lib/Target/Toy/Toy.td                    |   6 +
+ 4 files changed, 112 insertions(+), 19 deletions(-)
+
 diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
 index 31e473e047e0..65561180750d 100644
 --- a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
@@ -243,3 +255,6 @@ index 5cc49b8af8db..9a9441b2426b 100644
  }
  
  def : ProcessorModel<"cpu-rv32", NoSchedModel, []>;
+-- 
+2.34.1
+

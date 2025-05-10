@@ -1,3 +1,14 @@
+From b89bee0042fe95a2ae0be80e14470e815b290f14 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:46:55 +0000
+Subject: [PATCH 11/17] 0013-add-branch.patch
+
+---
+ .../Toy/MCTargetDesc/ToyMCCodeEmitter.cpp      |  8 ++++++++
+ llvm/lib/Target/Toy/ToyInstrInfo.td            | 18 ++++++++++++++++++
+ llvm/lib/Target/Toy/ToyMCInstLower.cpp         | 18 ++++++++++++++----
+ 3 files changed, 40 insertions(+), 4 deletions(-)
+
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
 index 3927dd8286f1..83dd7c4ccb3b 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
@@ -101,3 +112,6 @@ index 906f64512719..813bd51359dc 100644
      return LowerSymbolOperand(MO);
    }
  
+-- 
+2.34.1
+

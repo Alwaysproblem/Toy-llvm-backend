@@ -1,3 +1,26 @@
+From 4c555db35a184a42b36e2c2433a7606fb46bbf18 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:26:52 +0000
+Subject: [PATCH 08/17] 0010-find-global-address.patch
+
+---
+ .../Target/Toy/MCTargetDesc/CMakeLists.txt    |  1 +
+ .../Toy/MCTargetDesc/ToyInstPrinter.cpp       | 15 +++++
+ .../Target/Toy/MCTargetDesc/ToyInstPrinter.h  |  2 +
+ .../lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp | 45 +++++++++++++
+ llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.h  | 54 ++++++++++++++++
+ llvm/lib/Target/Toy/Toy.h                     |  1 -
+ llvm/lib/Target/Toy/ToyAsmPrinter.cpp         | 45 +++++++++++--
+ llvm/lib/Target/Toy/ToyISelLowering.cpp       |  2 +-
+ llvm/lib/Target/Toy/ToyInstrInfo.cpp          | 64 +++++++++++++++++++
+ llvm/lib/Target/Toy/ToyInstrInfo.h            | 14 ++++
+ llvm/lib/Target/Toy/ToyInstrInfo.td           | 10 +++
+ llvm/lib/Target/Toy/ToyMCInstLower.cpp        | 50 +++++++++++++++
+ llvm/lib/Target/Toy/ToyMCInstLower.h          |  8 +++
+ 13 files changed, 304 insertions(+), 7 deletions(-)
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.h
+
 diff --git a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
 index a0b51741bbb6..61efe2a7dd5c 100644
 --- a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
@@ -494,3 +517,6 @@ index 062a59bb2e50..ff451073e572 100644
    // Return an MCOperand for MO.
    MCOperand lowerOperand(const MachineOperand &MO) const;
  };
+-- 
+2.34.1
+

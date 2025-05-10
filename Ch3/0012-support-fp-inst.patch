@@ -1,8 +1,17 @@
+From 37e2bfadeee4bdcb0159ea0b77deecfd24b6a718 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:47:33 +0000
+Subject: [PATCH 12/17] 0014-support-fp-inst.patch
+
+---
+ llvm/lib/Target/Toy/ToyInstrInfo.td | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
 diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
-index bebd3bcba6cd..e4506d9e5522 100644
+index 2af261575d7e..5dbbe523810e 100644
 --- a/llvm/lib/Target/Toy/ToyInstrInfo.td
 +++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
-@@ -153,3 +153,23 @@ def : Pat<(brcond (i32 (setge GPR:$lhs, GPR:$rhs)), bb:$dst), (BGE GPR:$lhs, GPR
+@@ -148,3 +148,23 @@ def : Pat<(brcond (i32 (setge GPR:$lhs, GPR:$rhs)), bb:$dst), (BGE GPR:$lhs, GPR
  def : Pat<(brcond (i32 (setle GPR:$lhs, GPR:$rhs)), bb:$dst), (BGE GPR:$rhs, GPR:$lhs, brtarget:$dst)>;
  
  def : Pat<(AddrFI GPR:$rs1, imm12:$imm), (ADDI GPR:$rs1, imm12:$imm)>;
@@ -26,3 +35,6 @@ index bebd3bcba6cd..e4506d9e5522 100644
 +def FSUBD : ArithLogicF64<0b0000101, 0b000, "fsub.d", fsub>;
 +def FMULD : ArithLogicF64<0b0001001, 0b000, "fmul.d", fmul>;
 +def FDIVD : ArithLogicF64<0b0001101, 0b000, "fdiv.d", fdiv>;
+-- 
+2.34.1
+

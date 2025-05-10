@@ -1,8 +1,17 @@
+From c6a4e8713eeb788649ce53127d90dd54964e5067 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:36:47 +0000
+Subject: [PATCH 10/17] 0012-set-less-than-riscv.patch
+
+---
+ llvm/lib/Target/Toy/ToyInstrInfo.td | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
 diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
-index d11fa64ebfc2..c707747debe6 100644
+index 67160870d930..d9f8f154a698 100644
 --- a/llvm/lib/Target/Toy/ToyInstrInfo.td
 +++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
-@@ -127,3 +127,11 @@ def FSGNJD : InstR<0b1010011, 0b0010001, 0b000,
+@@ -122,3 +122,11 @@ def FSGNJD : InstR<0b1010011, 0b0010001, 0b000,
  
  def FMVD : ToyPseudo<(outs FPR64:$rd), (ins FPR64:$rs1),"", []>,
            PseudoInstExpansion<(FSGNJD FPR64:$rd, FPR64:$rs1, FPR64:$rs1)>;
@@ -14,3 +23,6 @@ index d11fa64ebfc2..c707747debe6 100644
 +def : Pat<(setlt GPR:$lhs, GPR:$rhs), (SLT GPR:$lhs, GPR:$rhs)>;
 +def : Pat<(seteq GPR:$lhs, GPR:$rhs), (SLT (XOR GPR:$lhs, GPR:$rhs), (ADDI ZERO, 1))>;
 +def : Pat<(setne GPR:$lhs, GPR:$rhs), (SLT ZERO, (XOR GPR:$lhs, GPR:$rhs))>;
+-- 
+2.34.1
+

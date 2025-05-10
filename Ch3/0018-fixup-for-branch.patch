@@ -21,11 +21,11 @@ index 813bd51359dc..0547a49cb9e0 100644
    ToyMCExpr::ToyExprKind TargetKind = ToyMCExpr::TEK_NONE;
    const MCSymbol *Symbol;
  
-+  unsigned IsBranch = 0;
++  bool IsBranch = false;
 +  unsigned int Opcode = MO.getParent()->getOpcode();
 +  if (Opcode == Toy::BLT || Opcode == Toy::BEQ || Opcode == Toy::BNE ||
 +      Opcode == Toy::BGE) {
-+    IsBranch = 1;
++    IsBranch = true;
 +  }
 +
    switch (MO.getTargetFlags()) {

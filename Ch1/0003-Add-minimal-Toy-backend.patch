@@ -1,3 +1,21 @@
+From e087dec4229edd2c52be7c05eb0f0762d7456680 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 02:30:23 +0000
+Subject: [PATCH 03/17] 0004-Add-minimal-Toy-backend.patch
+
+---
+ llvm/lib/Target/Toy/CMakeLists.txt            |   8 +
+ .../Toy/MCTargetDesc/ToyMCTargetDesc.cpp      |  37 +++-
+ .../Target/Toy/MCTargetDesc/ToyMCTargetDesc.h |  20 ++
+ llvm/lib/Target/Toy/Toy.td                    |  11 +-
+ llvm/lib/Target/Toy/ToyInstrFormats.td        | 175 ++++++++++++++++++
+ llvm/lib/Target/Toy/ToyInstrInfo.td           |  20 ++
+ llvm/lib/Target/Toy/ToyRegisterInfo.td        |  64 +++++++
+ 7 files changed, 332 insertions(+), 3 deletions(-)
+ create mode 100644 llvm/lib/Target/Toy/ToyInstrFormats.td
+ create mode 100644 llvm/lib/Target/Toy/ToyInstrInfo.td
+ create mode 100644 llvm/lib/Target/Toy/ToyRegisterInfo.td
+
 diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
 index c93a20e21d0d..934d352d84b1 100644
 --- a/llvm/lib/Target/Toy/CMakeLists.txt
@@ -403,3 +421,6 @@ index 000000000000..214335280c81
 +    FT0, FT1, FT2,
 +    FS0, FS1,
 +    FA0, FA1, FA2, FA3, FA4, FA5, FA6, FA7)>;
+-- 
+2.34.1
+

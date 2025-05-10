@@ -1,3 +1,52 @@
+From a24f8f24c930b2928d6a4e2403bc1134c30aae9e Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 09:39:42 +0000
+Subject: [PATCH 06/17] 0007-Adding-Instruction-Selection.patch
+
+---
+ llvm/lib/Target/Toy/CMakeLists.txt            |  29 +-
+ .../lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h |  22 ++
+ llvm/lib/Target/Toy/Toy.h                     |  37 ++
+ llvm/lib/Target/Toy/Toy.td                    |   1 +
+ llvm/lib/Target/Toy/ToyAsmPrinter.cpp         |  64 ++++
+ llvm/lib/Target/Toy/ToyCallingConv.td         |  21 ++
+ llvm/lib/Target/Toy/ToyFrameLowering.cpp      |  27 ++
+ llvm/lib/Target/Toy/ToyFrameLowering.h        |  29 ++
+ llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp       |  76 ++++
+ llvm/lib/Target/Toy/ToyISelLowering.cpp       | 333 ++++++++++++++++++
+ llvm/lib/Target/Toy/ToyISelLowering.h         |  64 ++++
+ llvm/lib/Target/Toy/ToyInstrFormats.td        |  58 +--
+ llvm/lib/Target/Toy/ToyInstrInfo.cpp          |  36 ++
+ llvm/lib/Target/Toy/ToyInstrInfo.h            |  39 ++
+ llvm/lib/Target/Toy/ToyInstrInfo.td           |  45 +++
+ llvm/lib/Target/Toy/ToyMCInstLower.cpp        |  38 ++
+ llvm/lib/Target/Toy/ToyMCInstLower.h          |  32 ++
+ llvm/lib/Target/Toy/ToyRegisterInfo.cpp       | 105 ++++++
+ llvm/lib/Target/Toy/ToyRegisterInfo.h         |  43 +++
+ llvm/lib/Target/Toy/ToySubtarget.cpp          |  32 ++
+ llvm/lib/Target/Toy/ToySubtarget.h            |  67 ++++
+ llvm/lib/Target/Toy/ToyTargetMachine.cpp      | 110 +++++-
+ llvm/lib/Target/Toy/ToyTargetMachine.h        |  44 +++
+ 23 files changed, 1320 insertions(+), 32 deletions(-)
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h
+ create mode 100644 llvm/lib/Target/Toy/Toy.h
+ create mode 100644 llvm/lib/Target/Toy/ToyAsmPrinter.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyCallingConv.td
+ create mode 100644 llvm/lib/Target/Toy/ToyFrameLowering.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyFrameLowering.h
+ create mode 100644 llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyISelLowering.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyISelLowering.h
+ create mode 100644 llvm/lib/Target/Toy/ToyInstrInfo.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyInstrInfo.h
+ create mode 100644 llvm/lib/Target/Toy/ToyMCInstLower.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyMCInstLower.h
+ create mode 100644 llvm/lib/Target/Toy/ToyRegisterInfo.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyRegisterInfo.h
+ create mode 100644 llvm/lib/Target/Toy/ToySubtarget.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToySubtarget.h
+ create mode 100644 llvm/lib/Target/Toy/ToyTargetMachine.h
+
 diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
 index 5fc8bf233053..bcec1b615ae7 100644
 --- a/llvm/lib/Target/Toy/CMakeLists.txt
@@ -1591,3 +1640,6 @@ index 000000000000..1b41b0224a45
 +} // end namespace llvm
 +
 +#endif // LLVM_LIB_TARGET_TOY_TOYTARGETMACHINE_H
+-- 
+2.34.1
+

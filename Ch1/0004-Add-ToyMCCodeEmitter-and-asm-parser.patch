@@ -1,3 +1,29 @@
+From fb90dd7af2b7a73ad15cb897e007f38209621137 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 04:11:33 +0000
+Subject: [PATCH 04/17] 0005-Add-ToyMCCodeEmitter-and-asm-parser.patch
+
+---
+ llvm/lib/Target/Toy/AsmParser/CMakeLists.txt  |  13 +
+ .../lib/Target/Toy/AsmParser/ToyAsmParser.cpp | 327 ++++++++++++++++++
+ llvm/lib/Target/Toy/CMakeLists.txt            |   3 +
+ .../Target/Toy/MCTargetDesc/CMakeLists.txt    |   5 +-
+ .../Toy/MCTargetDesc/ToyInstPrinter.cpp       |  48 +++
+ .../Target/Toy/MCTargetDesc/ToyInstPrinter.h  |  50 +++
+ .../Target/Toy/MCTargetDesc/ToyMCAsmInfo.cpp  |  23 ++
+ .../Target/Toy/MCTargetDesc/ToyMCAsmInfo.h    |  25 ++
+ .../Toy/MCTargetDesc/ToyMCCodeEmitter.cpp     |  97 ++++++
+ .../Toy/MCTargetDesc/ToyMCTargetDesc.cpp      |  27 ++
+ llvm/lib/Target/Toy/Toy.td                    |   6 +
+ 11 files changed, 623 insertions(+), 1 deletion(-)
+ create mode 100644 llvm/lib/Target/Toy/AsmParser/CMakeLists.txt
+ create mode 100644 llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.h
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmInfo.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmInfo.h
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
+
 diff --git a/llvm/lib/Target/Toy/AsmParser/CMakeLists.txt b/llvm/lib/Target/Toy/AsmParser/CMakeLists.txt
 new file mode 100644
 index 000000000000..1745c6ac3354
@@ -727,3 +753,6 @@ index 4f4bc449e85a..4213a6c13c29 100644
  
  def Toy : Target {
    let InstructionSet = ToyInstrInfo;
+-- 
+2.34.1
+

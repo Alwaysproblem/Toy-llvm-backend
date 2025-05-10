@@ -1,3 +1,14 @@
+From ee10948543fe35bf4546cb8550f137fed8de69f1 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:31:11 +0000
+Subject: [PATCH 09/17] 0011-stack-management.patch
+
+---
+ llvm/lib/Target/Toy/ToyFrameLowering.cpp | 53 +++++++++++++++++++++---
+ llvm/lib/Target/Toy/ToyFrameLowering.h   |  6 ++-
+ llvm/lib/Target/Toy/ToySubtarget.cpp     |  3 +-
+ 3 files changed, 55 insertions(+), 7 deletions(-)
+
 diff --git a/llvm/lib/Target/Toy/ToyFrameLowering.cpp b/llvm/lib/Target/Toy/ToyFrameLowering.cpp
 index fc0a47c667bd..e5db0f303979 100644
 --- a/llvm/lib/Target/Toy/ToyFrameLowering.cpp
@@ -105,3 +116,6 @@ index 4ca407a9aa0e..a56cc5425425 100644
 -      TLInfo(TM, *this), FrameLowering(), RegisterInfo(*this, getHwMode()) {}
 +      TLInfo(TM, *this), FrameLowering(*this),
 +      RegisterInfo(*this, getHwMode()) {}
+-- 
+2.34.1
+

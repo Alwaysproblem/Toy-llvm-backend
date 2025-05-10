@@ -1,3 +1,17 @@
+From f59a7c6d3767e4c3549d48b436ce9bd5c716ae1c Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 15:08:53 +0000
+Subject: [PATCH 16/17] 0018-add-intrinsic-function.patch
+
+---
+ llvm/include/llvm/IR/CMakeLists.txt   |  1 +
+ llvm/include/llvm/IR/Intrinsics.td    |  1 +
+ llvm/include/llvm/IR/IntrinsicsToy.td | 17 +++++++++++++++++
+ llvm/lib/IR/Function.cpp              |  1 +
+ llvm/lib/Target/Toy/ToyInstrInfo.td   |  3 +++
+ 5 files changed, 23 insertions(+)
+ create mode 100644 llvm/include/llvm/IR/IntrinsicsToy.td
+
 diff --git a/llvm/include/llvm/IR/CMakeLists.txt b/llvm/include/llvm/IR/CMakeLists.txt
 index 468d663796ed..34b6d78551db 100644
 --- a/llvm/include/llvm/IR/CMakeLists.txt
@@ -65,3 +79,6 @@ index bc0eeb013647..039db9288e51 100644
 +
 +// for the intrinsic function `int_toy_getsp`
 +def : Pat<(int_toy_getsp), (ADDI SP, 0)>;
+-- 
+2.34.1
+

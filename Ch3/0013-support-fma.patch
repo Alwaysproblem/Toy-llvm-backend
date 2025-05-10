@@ -1,8 +1,17 @@
+From fb0ad1e04dea8f2921c3c057a9327f90068861a8 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:48:02 +0000
+Subject: [PATCH 13/17] 0015-support-fma.patch
+
+---
+ llvm/lib/Target/Toy/ToyInstrInfo.td | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
 diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
-index e4506d9e5522..0d2470932566 100644
+index 5dbbe523810e..bc0eeb013647 100644
 --- a/llvm/lib/Target/Toy/ToyInstrInfo.td
 +++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
-@@ -164,6 +164,12 @@ def FSUBS : ArithLogicF<0b0000100, 0b000, "fsub.s", fsub>;
+@@ -159,6 +159,12 @@ def FSUBS : ArithLogicF<0b0000100, 0b000, "fsub.s", fsub>;
  def FMULS : ArithLogicF<0b0001000, 0b000, "fmul.s", fmul>;
  def FDIVS : ArithLogicF<0b0001100, 0b000, "fdiv.s", fdiv>;
  
@@ -15,7 +24,7 @@ index e4506d9e5522..0d2470932566 100644
  class ArithLogicF64 <bits<7> funct7, bits<3> funct3, string inst, SDNode node>:
        InstR<0b1010011, funct7, funct3, (outs FPR64:$rd), (ins FPR64:$rs1, FPR64:$rs2),
        !strconcat(inst, "\t$rd, $rs1, $rs2"),
-@@ -173,3 +179,7 @@ def FADDD : ArithLogicF64<0b0000001, 0b000, "fadd.d", fadd>;
+@@ -168,3 +174,7 @@ def FADDD : ArithLogicF64<0b0000001, 0b000, "fadd.d", fadd>;
  def FSUBD : ArithLogicF64<0b0000101, 0b000, "fsub.d", fsub>;
  def FMULD : ArithLogicF64<0b0001001, 0b000, "fmul.d", fmul>;
  def FDIVD : ArithLogicF64<0b0001101, 0b000, "fdiv.d", fdiv>;
@@ -23,3 +32,6 @@ index e4506d9e5522..0d2470932566 100644
 +def FMADDD : InstR4<0b1000011, 0b01, 0b000, (outs FPR64:$rd), (ins FPR64:$rs1, FPR64:$rs2, FPR64: $rs3),
 +      "fmadd.d\t$rd, $rs1, $rs2, $rs3",
 +      [(set FPR64:$rd, (fma FPR64:$rs1, FPR64:$rs2, FPR64:$rs3))]>;
+-- 
+2.34.1
+

@@ -1,3 +1,30 @@
+From eef0ba065d22cf1c9bd1697985912a0a36774ce7 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Mon, 28 Apr 2025 02:03:18 +0000
+Subject: [PATCH 02/17] 0003-Targeting-Registration.patch
+
+---
+ llvm/CMakeLists.txt                           |  1 +
+ llvm/lib/Target/Toy/CMakeLists.txt            | 13 +++++++
+ .../Target/Toy/MCTargetDesc/CMakeLists.txt    | 11 ++++++
+ .../Toy/MCTargetDesc/ToyMCTargetDesc.cpp      | 20 +++++++++++
+ .../Target/Toy/MCTargetDesc/ToyMCTargetDesc.h | 34 +++++++++++++++++++
+ llvm/lib/Target/Toy/TargetInfo/CMakeLists.txt |  9 +++++
+ .../Target/Toy/TargetInfo/ToyTargetInfo.cpp   | 22 ++++++++++++
+ .../lib/Target/Toy/TargetInfo/ToyTargetInfo.h | 20 +++++++++++
+ llvm/lib/Target/Toy/Toy.td                    | 26 ++++++++++++++
+ llvm/lib/Target/Toy/ToyTargetMachine.cpp      | 17 ++++++++++
+ 10 files changed, 173 insertions(+)
+ create mode 100644 llvm/lib/Target/Toy/CMakeLists.txt
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
+ create mode 100644 llvm/lib/Target/Toy/TargetInfo/CMakeLists.txt
+ create mode 100644 llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp
+ create mode 100644 llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h
+ create mode 100644 llvm/lib/Target/Toy/Toy.td
+ create mode 100644 llvm/lib/Target/Toy/ToyTargetMachine.cpp
+
 diff --git a/llvm/CMakeLists.txt b/llvm/CMakeLists.txt
 index 12618966c4ad..ff533a6da1ca 100644
 --- a/llvm/CMakeLists.txt
@@ -236,3 +263,6 @@ index 000000000000..d9ac61731702
 +extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTarget() {
 +  // TODO Register the target.
 +}
+-- 
+2.34.1
+
