@@ -125,7 +125,7 @@ index 000000000000..c9aa44455a93
 +  bool mayNeedRelaxation(const MCInst &Inst,
 +                         const MCSubtargetInfo &STI) const override;
 +
-+  bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value) const;
++  bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value) const override;
 +
 +  bool writeNopData(raw_ostream &OS, uint64_t Count,
 +                    const MCSubtargetInfo *STI) const override;

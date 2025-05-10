@@ -17,8 +17,7 @@ function usage
     echo "  --apply-patch  apply the patch in directory to the LLVM source code"
 }
 
-while test $# -gt 0
-do
+while [ "$1" != "--" ] && [[ $# -gt 0 ]]; do
    case "$1" in
         -p | --apply-patch)
             shift
@@ -35,6 +34,8 @@ do
     esac
     shift
 done
+shift
+_target=$1
 
 if [ ! -z "APPLY_PATCH" ]; then
     apply_patch ${APPLY_PATCH}
@@ -57,4 +58,4 @@ cmake --no-warn-unused-cli \
   -B${WORKSPACE}/llvm-project/llvm/build \
   -G Ninja
 
-cmake --build ${WORKSPACE}/llvm-project/llvm/build --config Debug --target llc
+cmake --build ${WORKSPACE}/llvm-project/llvm/build --config Debug --target $_target

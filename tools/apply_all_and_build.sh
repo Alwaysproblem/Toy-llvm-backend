@@ -25,6 +25,6 @@ bash ${WORKSPACE}/tools/apply_patch.sh -p Ch3/0015-write-to-obj.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch3/0016-add-intrinsic-function.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch3/0017-add-intrinsic-function-with-LowerINTRINSIC_WO_C.patch
 bash ${WORKSPACE}/tools/apply_patch.sh -p Ch3/0018-fixup-for-branch.patch
-bash ${WORKSPACE}/tools/build_llc.sh
+bash ${WORKSPACE}/tools/build_target.sh -- llc
 
 ./llvm-project/llvm/build/bin/llc vscode/test/hello.ll
