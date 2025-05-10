@@ -1,0 +1,117 @@
+From b89bee0042fe95a2ae0be80e14470e815b290f14 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:46:55 +0000
+Subject: [PATCH 11/17] 0013-add-branch.patch
+
+---
+ .../Toy/MCTargetDesc/ToyMCCodeEmitter.cpp      |  8 ++++++++
+ llvm/lib/Target/Toy/ToyInstrInfo.td            | 18 ++++++++++++++++++
+ llvm/lib/Target/Toy/ToyMCInstLower.cpp         | 18 ++++++++++++++----
+ 3 files changed, 40 insertions(+), 4 deletions(-)
+
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
+index 3927dd8286f1..83dd7c4ccb3b 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
+@@ -11,6 +11,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "ToyMCExpr.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/Statistic.h"
+ #include "llvm/MC/MCCodeEmitter.h"
+@@ -23,6 +24,7 @@
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/Endian.h"
+ #include "llvm/Support/EndianStream.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include <cassert>
+ 
+@@ -85,6 +87,12 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
+     return Ctx.getRegisterInfo()->getEncodingValue(MO.getReg());
+   if (MO.isImm())
+     return static_cast<uint64_t>(MO.getImm());
++  // MO must be an expression
++  assert(MO.isExpr() && "Expected MCExpr");
++  const MCExpr *Expr = MO.getExpr();
++  assert(isa<ToyMCExpr>(Expr) && "Expected ToyMCExpr");
++  llvm_unreachable("ToyMCExpr not implemented yet");
++
+   return 0;
+ }
+ 
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
+index d9f8f154a698..2af261575d7e 100644
+--- a/llvm/lib/Target/Toy/ToyInstrInfo.td
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
+@@ -130,3 +130,21 @@ def : Pat<(setgt GPR:$lhs, GPR:$rhs), (SLT GPR:$rhs, GPR:$lhs)>;
+ def : Pat<(setlt GPR:$lhs, GPR:$rhs), (SLT GPR:$lhs, GPR:$rhs)>;
+ def : Pat<(seteq GPR:$lhs, GPR:$rhs), (SLT (XOR GPR:$lhs, GPR:$rhs), (ADDI ZERO, 1))>;
+ def : Pat<(setne GPR:$lhs, GPR:$rhs), (SLT ZERO, (XOR GPR:$lhs, GPR:$rhs))>;
++
++class BRANCH<bits<3> funct3, string asm>:InstB<0b1100011, funct3, (outs),
++                                               (ins GPR:$rs1, GPR:$rs2, brtarget:$imm12),
++                                               !strconcat(asm, "\t$rs1, $rs2, $imm12"),
++                                               []>;
++def BLT : BRANCH<0b100, "blt">;
++def BEQ : BRANCH<0b000, "beq">;
++def BNE : BRANCH<0b001, "bne">;
++def BGE : BRANCH<0b101, "bge">;
++
++def : Pat<(brcond (i32 (setlt GPR:$lhs, GPR:$rhs)), bb:$dst), (BLT GPR:$lhs, GPR:$rhs, brtarget:$dst)>;
++def : Pat<(brcond (i32 (setgt GPR:$lhs, GPR:$rhs)), bb:$dst), (BLT GPR:$rhs, GPR:$lhs, brtarget:$dst)>;
++def : Pat<(brcond (i32 (seteq GPR:$lhs, GPR:$rhs)), bb:$dst), (BEQ GPR:$lhs, GPR:$rhs, brtarget:$dst)>;
++def : Pat<(brcond (i32 (setne GPR:$lhs, GPR:$rhs)), bb:$dst), (BNE GPR:$lhs, GPR:$rhs, brtarget:$dst)>;
++def : Pat<(brcond (i32 (setge GPR:$lhs, GPR:$rhs)), bb:$dst), (BGE GPR:$lhs, GPR:$rhs, brtarget:$dst)>;
++def : Pat<(brcond (i32 (setle GPR:$lhs, GPR:$rhs)), bb:$dst), (BGE GPR:$rhs, GPR:$lhs, brtarget:$dst)>;
++
++def : Pat<(AddrFI GPR:$rs1, imm12:$imm), (ADDI GPR:$rs1, imm12:$imm)>;
+diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.cpp b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+index 906f64512719..813bd51359dc 100644
+--- a/llvm/lib/Target/Toy/ToyMCInstLower.cpp
++++ b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+@@ -40,8 +40,8 @@ MCOperand ToyMCInstLower::LowerSymbolOperand(const MachineOperand &MO) const {
+   }
+ 
+   switch (MO.getType()) {
+-  case MachineOperand::MO_ConstantPoolIndex:
+-    Symbol = Printer.GetCPISymbol(MO.getIndex());
++  case MachineOperand::MO_MachineBasicBlock:
++    Symbol = MO.getMBB()->getSymbol();
+     break;
+   case MachineOperand::MO_GlobalAddress:
+     Symbol = Printer.getSymbol(MO.getGlobal());
+@@ -49,6 +49,12 @@ MCOperand ToyMCInstLower::LowerSymbolOperand(const MachineOperand &MO) const {
+   case MachineOperand::MO_ExternalSymbol:
+     Symbol = Printer.GetExternalSymbolSymbol(MO.getSymbolName());
+     break;
++  case MachineOperand::MO_ConstantPoolIndex:
++    Symbol = Printer.GetCPISymbol(MO.getIndex());
++    break;
++  case MachineOperand::MO_BlockAddress:
++    Symbol = Printer.GetBlockAddressSymbol(MO.getBlockAddress());
++    break;
+   default:
+     llvm_unreachable("<unknown operand type>");
+   }
+@@ -67,9 +73,13 @@ MCOperand ToyMCInstLower::lowerOperand(const MachineOperand &MO) const {
+ 
+   case MachineOperand::MO_Immediate:
+     return MCOperand::createImm(MO.getImm());
+-  case MachineOperand::MO_GlobalAddress:
++  case MachineOperand::MO_MachineBasicBlock:
++   case MachineOperand::MO_GlobalAddress:
++  case MachineOperand::MO_ExternalSymbol:
++  case MachineOperand::MO_MCSymbol:
++  case MachineOperand::MO_JumpTableIndex:
+   case MachineOperand::MO_ConstantPoolIndex:
+-  case MachineOperand::MO_ExternalSymbol: {
++  case MachineOperand::MO_BlockAddress: {
+     return LowerSymbolOperand(MO);
+   }
+ 
+-- 
+2.34.1
+

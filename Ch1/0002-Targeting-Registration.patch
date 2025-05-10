@@ -1,0 +1,268 @@
+From eef0ba065d22cf1c9bd1697985912a0a36774ce7 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Mon, 28 Apr 2025 02:03:18 +0000
+Subject: [PATCH 02/17] 0003-Targeting-Registration.patch
+
+---
+ llvm/CMakeLists.txt                           |  1 +
+ llvm/lib/Target/Toy/CMakeLists.txt            | 13 +++++++
+ .../Target/Toy/MCTargetDesc/CMakeLists.txt    | 11 ++++++
+ .../Toy/MCTargetDesc/ToyMCTargetDesc.cpp      | 20 +++++++++++
+ .../Target/Toy/MCTargetDesc/ToyMCTargetDesc.h | 34 +++++++++++++++++++
+ llvm/lib/Target/Toy/TargetInfo/CMakeLists.txt |  9 +++++
+ .../Target/Toy/TargetInfo/ToyTargetInfo.cpp   | 22 ++++++++++++
+ .../lib/Target/Toy/TargetInfo/ToyTargetInfo.h | 20 +++++++++++
+ llvm/lib/Target/Toy/Toy.td                    | 26 ++++++++++++++
+ llvm/lib/Target/Toy/ToyTargetMachine.cpp      | 17 ++++++++++
+ 10 files changed, 173 insertions(+)
+ create mode 100644 llvm/lib/Target/Toy/CMakeLists.txt
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
+ create mode 100644 llvm/lib/Target/Toy/TargetInfo/CMakeLists.txt
+ create mode 100644 llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp
+ create mode 100644 llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h
+ create mode 100644 llvm/lib/Target/Toy/Toy.td
+ create mode 100644 llvm/lib/Target/Toy/ToyTargetMachine.cpp
+
+diff --git a/llvm/CMakeLists.txt b/llvm/CMakeLists.txt
+index 12618966c4ad..ff533a6da1ca 100644
+--- a/llvm/CMakeLists.txt
++++ b/llvm/CMakeLists.txt
+@@ -487,6 +487,7 @@ set(LLVM_ALL_TARGETS
+   WebAssembly
+   X86
+   XCore
++  Toy
+   )
+ 
+ set(LLVM_ALL_EXPERIMENTAL_TARGETS
+diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
+new file mode 100644
+index 000000000000..c93a20e21d0d
+--- /dev/null
++++ b/llvm/lib/Target/Toy/CMakeLists.txt
+@@ -0,0 +1,13 @@
++add_llvm_component_group(Toy)
++
++set(LLVM_TARGET_DEFINITIONS Toy.td)
++
++add_llvm_target(ToyCodeGen
++  ToyTargetMachine.cpp
++
++  ADD_TO_COMPONENT
++  Toy
++  )
++
++add_subdirectory(TargetInfo)
++add_subdirectory(MCTargetDesc)
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+new file mode 100644
+index 000000000000..eac4af91ed25
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+@@ -0,0 +1,11 @@
++add_llvm_component_library(LLVMToyDesc
++  ToyMCTargetDesc.cpp
++
++  LINK_COMPONENTS
++  MC
++  Support
++  ToyInfo
++
++  ADD_TO_COMPONENT
++  Toy
++  )
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+new file mode 100644
+index 000000000000..4a697a4e2ceb
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+@@ -0,0 +1,20 @@
++//===-- ToyMCTargetDesc.cpp - Toy target descriptions -------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyMCTargetDesc.h"
++#include "TargetInfo/ToyTargetInfo.h"
++#include "llvm/MC/MCDwarf.h"
++#include "llvm/MC/MCInstrInfo.h"
++#include "llvm/MC/MCRegisterInfo.h"
++#include "llvm/MC/MCStreamer.h"
++#include "llvm/MC/MCSubtargetInfo.h"
++#include "llvm/MC/TargetRegistry.h"
++
++using namespace llvm;
++
++extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {}
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
+new file mode 100644
+index 000000000000..124f9f80120c
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
+@@ -0,0 +1,34 @@
++//===-- ToyMCTargetDesc.h - Toy target descriptions -----------*- C -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCTARGETDESC_H
++#define LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCTARGETDESC_H
++
++#include "llvm/Support/DataTypes.h"
++
++#include <memory>
++
++namespace llvm {
++
++class MCAsmBackend;
++class MCCodeEmitter;
++class MCContext;
++class MCInstrInfo;
++class MCObjectTargetWriter;
++class MCRegisterInfo;
++class MCSubtargetInfo;
++class MCTargetOptions;
++class StringRef;
++class Target;
++class Triple;
++class raw_pwrite_stream;
++class raw_ostream;
++
++} // end namespace llvm
++
++#endif
+diff --git a/llvm/lib/Target/Toy/TargetInfo/CMakeLists.txt b/llvm/lib/Target/Toy/TargetInfo/CMakeLists.txt
+new file mode 100644
+index 000000000000..050113135d31
+--- /dev/null
++++ b/llvm/lib/Target/Toy/TargetInfo/CMakeLists.txt
+@@ -0,0 +1,9 @@
++add_llvm_component_library(LLVMToyInfo
++  ToyTargetInfo.cpp
++
++  LINK_COMPONENTS
++  Support
++
++  ADD_TO_COMPONENT
++  Toy
++  )
+diff --git a/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp
+new file mode 100644
+index 000000000000..5dc92351abf0
+--- /dev/null
++++ b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.cpp
+@@ -0,0 +1,22 @@
++//===-- ToyTargetInfo.cpp - Toy target implementation -------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "TargetInfo/ToyTargetInfo.h"
++#include "llvm/MC/TargetRegistry.h"
++
++using namespace llvm;
++
++Target &llvm::getTheToyTarget() {
++  static Target TheToyTarget;
++  return TheToyTarget;
++}
++
++extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetInfo() {
++  RegisterTarget<Triple::toy, /*HasJIT=*/false> X(getTheToyTarget(), "Toy",
++                                                  "Toy RISC-V backend", "Toy");
++}
+diff --git a/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h
+new file mode 100644
+index 000000000000..4cdf288ee7d9
+--- /dev/null
++++ b/llvm/lib/Target/Toy/TargetInfo/ToyTargetInfo.h
+@@ -0,0 +1,20 @@
++//===-- ToyTargetInfo.h - Toy target implementation -----------*- C -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TARGETINFO_TOYTARGETINFO_H
++#define LLVM_LIB_TARGET_TOY_TARGETINFO_TOYTARGETINFO_H
++
++namespace llvm {
++
++class Target;
++
++Target &getTheToyTarget();
++
++} // namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TARGETINFO_TOYTARGETINFO_H
+diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
+new file mode 100644
+index 000000000000..3211b8c0ff5a
+--- /dev/null
++++ b/llvm/lib/Target/Toy/Toy.td
+@@ -0,0 +1,26 @@
++//===-- Toy.td - Describe the Toy RISCV Target Machine -----*- tablegen -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++//
++//===----------------------------------------------------------------------===//
++
++//===----------------------------------------------------------------------===//
++// Target-independent interfaces which we are implementing
++//===----------------------------------------------------------------------===//
++
++include "llvm/Target/Target.td"
++
++//===----------------------------------------------------------------------===//
++// Register File, Calling Conv, Instruction Descriptions
++//===----------------------------------------------------------------------===//
++
++//===----------------------------------------------------------------------===//
++// Declare the target which we are implementing
++//===----------------------------------------------------------------------===//
++
++def Toy : Target;
+diff --git a/llvm/lib/Target/Toy/ToyTargetMachine.cpp b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
+new file mode 100644
+index 000000000000..d9ac61731702
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
+@@ -0,0 +1,17 @@
++//===-- ToyTargetMachine.cpp - Define TargetMachine for Toy ---*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++//
++//===----------------------------------------------------------------------===//
++
++#include "TargetInfo/ToyTargetInfo.h"
++#include "llvm/MC/TargetRegistry.h"
++
++extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTarget() {
++  // TODO Register the target.
++}
+-- 
+2.34.1
+

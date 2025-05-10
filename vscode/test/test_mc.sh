@@ -1,0 +1,1 @@
+echo "addi t0, zero, 1" | ./build/bin/llvm-mc --triple toy --show-encoding 

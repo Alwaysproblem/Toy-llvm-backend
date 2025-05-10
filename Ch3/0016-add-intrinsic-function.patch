@@ -1,0 +1,84 @@
+From f59a7c6d3767e4c3549d48b436ce9bd5c716ae1c Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 15:08:53 +0000
+Subject: [PATCH 16/17] 0018-add-intrinsic-function.patch
+
+---
+ llvm/include/llvm/IR/CMakeLists.txt   |  1 +
+ llvm/include/llvm/IR/Intrinsics.td    |  1 +
+ llvm/include/llvm/IR/IntrinsicsToy.td | 17 +++++++++++++++++
+ llvm/lib/IR/Function.cpp              |  1 +
+ llvm/lib/Target/Toy/ToyInstrInfo.td   |  3 +++
+ 5 files changed, 23 insertions(+)
+ create mode 100644 llvm/include/llvm/IR/IntrinsicsToy.td
+
+diff --git a/llvm/include/llvm/IR/CMakeLists.txt b/llvm/include/llvm/IR/CMakeLists.txt
+index 468d663796ed..34b6d78551db 100644
+--- a/llvm/include/llvm/IR/CMakeLists.txt
++++ b/llvm/include/llvm/IR/CMakeLists.txt
+@@ -22,4 +22,5 @@ tablegen(LLVM IntrinsicsWebAssembly.h -gen-intrinsic-enums -intrinsic-prefix=was
+ tablegen(LLVM IntrinsicsX86.h -gen-intrinsic-enums -intrinsic-prefix=x86)
+ tablegen(LLVM IntrinsicsXCore.h -gen-intrinsic-enums -intrinsic-prefix=xcore)
+ tablegen(LLVM IntrinsicsVE.h -gen-intrinsic-enums -intrinsic-prefix=ve)
++tablegen(LLVM IntrinsicsToy.h -gen-intrinsic-enums -intrinsic-prefix=toy)
+ add_public_tablegen_target(intrinsics_gen)
+diff --git a/llvm/include/llvm/IR/Intrinsics.td b/llvm/include/llvm/IR/Intrinsics.td
+index b4e758136b39..2cff3f98b5b4 100644
+--- a/llvm/include/llvm/IR/Intrinsics.td
++++ b/llvm/include/llvm/IR/Intrinsics.td
+@@ -2764,5 +2764,6 @@ include "llvm/IR/IntrinsicsSPIRV.td"
+ include "llvm/IR/IntrinsicsVE.td"
+ include "llvm/IR/IntrinsicsDirectX.td"
+ include "llvm/IR/IntrinsicsLoongArch.td"
++include "llvm/IR/IntrinsicsToy.td"
+ 
+ #endif // TEST_INTRINSICS_SUPPRESS_DEFS
+diff --git a/llvm/include/llvm/IR/IntrinsicsToy.td b/llvm/include/llvm/IR/IntrinsicsToy.td
+new file mode 100644
+index 000000000000..ceb695ceb616
+--- /dev/null
++++ b/llvm/include/llvm/IR/IntrinsicsToy.td
+@@ -0,0 +1,17 @@
++//===- IntrinsicsToy.td - Target Independent TableGen interface ---*- tablegen -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file defines all of the Toy-specific intrinsics.
++//
++//===----------------------------------------------------------------------===//
++
++let TargetPrefix = "toy" in {
++  def int_toy_getsp :
++    ClangBuiltin<"__builtin_getsp">,
++    Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>;
++}
+diff --git a/llvm/lib/IR/Function.cpp b/llvm/lib/IR/Function.cpp
+index 20871982afb0..3dee964aaa9b 100644
+--- a/llvm/lib/IR/Function.cpp
++++ b/llvm/lib/IR/Function.cpp
+@@ -49,6 +49,7 @@
+ #include "llvm/IR/IntrinsicsVE.h"
+ #include "llvm/IR/IntrinsicsWebAssembly.h"
+ #include "llvm/IR/IntrinsicsX86.h"
++#include "llvm/IR/IntrinsicsToy.h"
+ #include "llvm/IR/IntrinsicsXCore.h"
+ #include "llvm/IR/LLVMContext.h"
+ #include "llvm/IR/MDBuilder.h"
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
+index bc0eeb013647..039db9288e51 100644
+--- a/llvm/lib/Target/Toy/ToyInstrInfo.td
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
+@@ -178,3 +178,6 @@ def FDIVD : ArithLogicF64<0b0001101, 0b000, "fdiv.d", fdiv>;
+ def FMADDD : InstR4<0b1000011, 0b01, 0b000, (outs FPR64:$rd), (ins FPR64:$rs1, FPR64:$rs2, FPR64: $rs3),
+       "fmadd.d\t$rd, $rs1, $rs2, $rs3",
+       [(set FPR64:$rd, (fma FPR64:$rs1, FPR64:$rs2, FPR64:$rs3))]>;
++
++// for the intrinsic function `int_toy_getsp`
++def : Pat<(int_toy_getsp), (ADDI SP, 0)>;
+-- 
+2.34.1
+

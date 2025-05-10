@@ -1,6 +1,12 @@
 #!/bin/bash
 
 WORKSPACE=$PWD
+
+if [[ -f "/usr/bin/git" ]]; then
+  WORKSPACE=`git rev-parse --show-toplevel`
+  cd ${WORKSPACE}
+fi
+
 source ${WORKSPACE}/tools/apply_patch.sh
 APPLY_PATCH=""
 
@@ -11,8 +17,7 @@ function usage
     echo "  --apply-patch  apply the patch in directory to the LLVM source code"
 }
 
-while test $# -gt 0
-do
+while [ "$1" != "--" ] && [[ $# -gt 0 ]]; do
    case "$1" in
         -p | --apply-patch)
             shift
@@ -29,8 +34,12 @@ do
     esac
     shift
 done
+shift
+_target=$1
 
-apply_patch ${APPLY_PATCH}
+if [ ! -z "APPLY_PATCH" ]; then
+    apply_patch ${APPLY_PATCH}
+fi
 
 cd ${WORKSPACE}/llvm-project/llvm
 rm -rf build
@@ -49,4 +58,4 @@ cmake --no-warn-unused-cli \
   -B${WORKSPACE}/llvm-project/llvm/build \
   -G Ninja
 
-cmake --build ${WORKSPACE}/llvm-project/llvm/build --config Debug --target llc
+cmake --build ${WORKSPACE}/llvm-project/llvm/build --config Debug --target $_target

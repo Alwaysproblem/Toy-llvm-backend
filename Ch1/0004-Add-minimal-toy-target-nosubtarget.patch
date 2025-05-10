@@ -1,0 +1,405 @@
+diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
+index c93a20e21d0d..934d352d84b1 100644
+--- a/llvm/lib/Target/Toy/CMakeLists.txt
++++ b/llvm/lib/Target/Toy/CMakeLists.txt
+@@ -2,6 +2,14 @@ add_llvm_component_group(Toy)
+ 
+ set(LLVM_TARGET_DEFINITIONS Toy.td)
+ 
++tablegen(LLVM ToyGenAsmWriter.inc -gen-asm-writer)
++tablegen(LLVM ToyGenDisassemblerTables.inc -gen-disassembler)
++tablegen(LLVM ToyGenInstrInfo.inc -gen-instr-info)
++tablegen(LLVM ToyGenRegisterInfo.inc -gen-register-info)
++tablegen(LLVM ToyGenSubtargetInfo.inc -gen-subtarget)
++
++add_public_tablegen_target(ToyCommonTableGen)
++
+ add_llvm_target(ToyCodeGen
+   ToyTargetMachine.cpp
+ 
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+index 43c32adb7580..f51b6a6f654f 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+@@ -8,7 +8,6 @@
+ 
+ #include "ToyMCTargetDesc.h"
+ #include "TargetInfo/ToyTargetInfo.h"
+-#include "llvm/MC/MCDwarf.h"
+ #include "llvm/MC/MCInstrInfo.h"
+ #include "llvm/MC/MCRegisterInfo.h"
+ #include "llvm/MC/MCStreamer.h"
+@@ -17,6 +16,41 @@
+ 
+ using namespace llvm;
+ 
++#define GET_INSTRINFO_MC_DESC
++#include "ToyGenInstrInfo.inc"
++
++#define GET_REGINFO_MC_DESC
++#include "ToyGenRegisterInfo.inc"
++
++#define GET_SUBTARGETINFO_MC_DESC
++#include "ToyGenSubtargetInfo.inc"
++
++static MCInstrInfo *createToyMCInstrInfo() {
++  MCInstrInfo *X = new MCInstrInfo();
++  InitToyMCInstrInfo(X);
++  return X;
++}
++
++static MCRegisterInfo *createToyMCRegisterInfo(const Triple &TT) {
++  MCRegisterInfo *X = new MCRegisterInfo();
++  InitToyMCRegisterInfo(X, Toy::RA);
++  return X;
++}
++
++static MCSubtargetInfo *createToyMCSubtargetInfo(const Triple &TT,
++                                                  StringRef CPU, StringRef FS) {
++  return createToyMCSubtargetInfoImpl(TT, CPU, /*TuneCPU*/ CPU, FS);
++}
++
++
+ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
+-  
++  // Register the MCInstrInfo.
++  TargetRegistry::RegisterMCInstrInfo(getTheToyTarget(),
++                                      createToyMCInstrInfo);
++  // Register the MCRegisterInfo.
++  TargetRegistry::RegisterMCRegInfo(getTheToyTarget(),
++                                    createToyMCRegisterInfo);
++  // Register the MCSubtargetInfo.
++  TargetRegistry::RegisterMCSubtargetInfo(getTheToyTarget(),
++                                          createToyMCSubtargetInfo);
+ }
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
+index 8bab8b2a2289..b063ac27467e 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.h
+@@ -29,6 +29,27 @@ class Triple;
+ class raw_pwrite_stream;
+ class raw_ostream;
+ 
++MCCodeEmitter *createToyMCCodeEmitter(const MCInstrInfo &MCII,
++                                       MCContext &Ctx);
++
++MCAsmBackend *createToyMCAsmBackend(const Target &T,
++                                     const MCSubtargetInfo &STI,
++                                     const MCRegisterInfo &MRI,
++                                     const MCTargetOptions &Options);
++
++std::unique_ptr<MCObjectTargetWriter> createToyObjectWriter(uint8_t OSABI);
+ } // end namespace llvm
+ 
++// Defines symbolic names for Toy registers.
++// This defines a mapping from register name to register number.
++#define GET_REGINFO_ENUM
++#include "ToyGenRegisterInfo.inc"
++
++// Defines symbolic names for the Toy instructions.
++#define GET_INSTRINFO_ENUM
++#include "ToyGenInstrInfo.inc"
++
++#define GET_SUBTARGETINFO_ENUM
++#include "ToyGenSubtargetInfo.inc"
++
+ #endif
+diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
+index 3211b8c0ff5a..fc0c05691fbe 100644
+--- a/llvm/lib/Target/Toy/Toy.td
++++ b/llvm/lib/Target/Toy/Toy.td
+@@ -19,8 +19,16 @@ include "llvm/Target/Target.td"
+ // Register File, Calling Conv, Instruction Descriptions
+ //===----------------------------------------------------------------------===//
+ 
++include "ToyRegisterInfo.td"
++include "ToyInstrFormats.td"
++include "ToyInstrInfo.td"
++
+ //===----------------------------------------------------------------------===//
+ // Declare the target which we are implementing
+ //===----------------------------------------------------------------------===//
+ 
+-def Toy : Target;
++def ToyInstrInfo : InstrInfo;
++
++def Toy : Target {
++  let InstructionSet = ToyInstrInfo;
++}
+diff --git a/llvm/lib/Target/Toy/ToyInstrFormats.td b/llvm/lib/Target/Toy/ToyInstrFormats.td
+new file mode 100644
+index 000000000000..12497a1a4160
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyInstrFormats.td
+@@ -0,0 +1,175 @@
++//===-- ToyInstrFormats.td - Toy Instruction Formats -----*- tablegen -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++// Spec 2.2 Base Instruction Formats
++//
++//  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
++// ┌─────────────────────────┬──────────────────┬──────────────┬────────┬─────────────────┬─────────────┐
++// │         funct7          │       rs2        │     rs1      │ funct3 │       rd        │   opcode    │ R-type
++// ├─────────────────────────┴──────────────────┼──────────────┼────────┼─────────────────┼─────────────┤
++// │                imm[11:0]                   │     rs1      │ funct3 │       rd        │   opcode    │ I-type
++// ├─────────────────────────┬──────────────────┼──────────────┼────────┼─────────────────┼─────────────┤
++// │        imm[11:5]        │       rs2        │     rs1      │ funct3 │   imm[4:0]      │   opcode    │ S-type
++// ├───────┬─────────────────┼──────────────────┼──────────────┼────────┼─────────┬───────┼─────────────┤
++// │imm[12]│    imm[10:5]    │       rs2        │     rs1      │ funct3 │imm[4:1] │imm[11]│   opcode    │ B-type
++// ├───────┴─────────────────┴──────────────────┴──────────────┴────────┼─────────┴───────┼─────────────┤
++// │                             imm[31:12]                             │       rd        │   opcode    │ U-type
++// ├───────┬────────────────────────────┬───────┬───────────────────────┼─────────────────┼─────────────┤
++// │imm[20]│         imm[10:1]          │imm[11]│      imm[19:12]       │       rd        │   opcode    │ J-type
++// └───────┴────────────────────────────┴───────┴───────────────────────┴─────────────────┴─────────────┘
++class ToyInst<dag outs, dag ins, string asm, list<dag> pattern>: Instruction
++{
++  let Namespace = "Toy";
++
++  let OutOperandList = outs;
++  let InOperandList = ins;
++  let AsmString = asm;
++  let Pattern = pattern;
++
++  let DecoderNamespace = "Toy";
++
++  field bits<32> Inst;
++  bits<7> Opcode = 0;
++  let Inst{6-0} = Opcode;
++}
++
++//  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
++// ├─────────────────────────┴──────────────────┼──────────────┼────────┼─────────────────┼─────────────┤
++// │                imm[11:0]                   │     rs1      │ funct3 │       rd        │   opcode    │ I-type
++// ├─────────────────────────┬──────────────────┼──────────────┼────────┼─────────────────┼─────────────┤
++class InstI<bits<7> opcode, bits<3> funct3, 
++      dag outs, dag ins, string asm, 
++      list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
++  let Opcode = opcode;
++
++  bits<5> rd;
++  bits<5> rs1;
++  bits<12> imm;
++
++  let Inst{31-20} = imm;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = rd;
++}
++
++//  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
++// ┌─────────────────────────┬──────────────────┬──────────────┬────────┬─────────────────┬─────────────┐
++// │         funct7          │       rs2        │     rs1      │ funct3 │       rd        │   opcode    │ R-type
++// ├─────────────────────────┴──────────────────┼──────────────┼────────┼─────────────────┼─────────────┤
++class InstR<bits<7> opcode, bits<7> funct7, 
++            bits<3> funct3, dag outs,
++            dag ins, string asm, list<dag> pattern>
++      : ToyInst<outs, ins, asm, pattern>{
++  let Opcode = opcode;
++
++  bits<5> rd;
++  bits<5> rs1;
++  bits<5> rs2;
++
++  let Inst{31-25} = funct7;
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = rd;
++}
++
++class InstR4<bits<7> opcode, bits<2> funct2, bits<3> funct3, dag outs,
++            dag ins, string asm, list<dag> pattern>
++      : ToyInst<outs, ins, asm, pattern>{
++  let Opcode = opcode;
++  bits<5> rs3;
++  bits<5> rs2;
++  bits<5> rs1;
++  bits<5> rd;
++
++  let Inst{31-27} = rs3;
++  let Inst{26-25} = funct2;
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = rd;
++}
++
++//  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
++// ├───────┴─────────────────┴──────────────────┴──────────────┴────────┼─────────┴───────┼─────────────┤
++// │                             imm[31:12]                             │       rd        │   opcode    │ U-type
++// ├───────┬────────────────────────────┬───────┬───────────────────────┼─────────────────┼─────────────┤
++class InstU<bits<7> opcode, dag outs, 
++            dag ins, string asm, 
++            list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
++      let Opcode = opcode;
++
++      bits<5> rd;
++      bits<20> imm;
++
++      let Inst{31-12} = imm;
++      let Inst{11-7} = rd;
++}
++
++//  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
++// ├───────┬─────────────────┼──────────────────┼──────────────┼────────┼─────────┬───────┼─────────────┤
++// │imm[12]│    imm[10:5]    │       rs2        │     rs1      │ funct3 │imm[4:1] │imm[11]│   opcode    │ B-type
++// ├───────┴─────────────────┴──────────────────┴──────────────┴────────┼─────────┴───────┼─────────────┤
++class InstB<bits<7> opcode, bits<3> funct3, 
++            dag outs, dag ins, string asm, 
++            list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
++  let Opcode = opcode;
++  bits<5> rs2;
++  bits<5> rs1;
++  bits<12> imm12;
++
++  let Inst{31} = imm12{11};
++  let Inst{30-25} = imm12{9-4};
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-8} = imm12{3-0};
++  let Inst{7} = imm12{10};
++}
++
++//  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
++// ├─────────────────────────┬──────────────────┼──────────────┼────────┼─────────────────┼─────────────┤
++// │        imm[11:5]        │       rs2        │     rs1      │ funct3 │   imm[4:0]      │   opcode    │ S-type
++// ├───────┬─────────────────┼──────────────────┼──────────────┼────────┼─────────┬───────┼─────────────┤
++class InstS<bits<7> opcode, bits<3> funct3,
++            dag outs, dag ins, string asm, list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
++  let Opcode = opcode;
++  bits<5> rs1;
++  bits<5> rs2;
++  bits<12> imm;
++
++  let Inst{31-25} = imm{11-5};
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = imm{4-0};
++}
++
++//  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
++// ├───────┬────────────────────────────┬───────┬───────────────────────┼─────────────────┼─────────────┤
++// │imm[20]│         imm[10:1]          │imm[11]│      imm[19:12]       │       rd        │   opcode    │ J-type
++// └───────┴────────────────────────────┴───────┴───────────────────────┴─────────────────┴─────────────┘
++class InstJ<bits<7> opcode, dag outs, dag ins, 
++            string asm, 
++            list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
++      let Opcode = opcode;
++      bits<20> imm20;
++      bits<5> rd;
++
++      let Inst{31} = imm20{19};
++      let Inst{30-21} = imm20{9-0};
++      let Inst{20} = imm20{10};
++      let Inst{19-12} = imm20{18-11};
++      let Inst{11-7} = rd;
++}
++
++class ToyPseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
++      ToyInst<outs, ins, asmstr, pattern> {
++  let isCodeGenOnly = 1;
++  let isPseudo = 1;
++}
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
+new file mode 100644
+index 000000000000..fe0180b1f9e5
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
+@@ -0,0 +1,20 @@
++//===-- ToyInstrFormats.td - Toy Instruction Formats -----*- tablegen -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++def imm12 : Operand<i32>, ImmLeaf<i32, [{return isInt<12>(Imm);}]>;
++def imm20 : Operand<i32>, ImmLeaf<i32, [{return isInt<20>(Imm);}]>;
++
++class ArithLogicI <bits<7> opcode, bits<3> funct3, string inst, SDNode node>:
++      InstI<opcode, funct3, (outs GPR:$rd), (ins GPR:$rs1, imm12:$imm),
++      !strconcat(inst, "\t$rd, $rs1, $imm"),
++      [(set GPR:$rd, (node GPR:$rs1, imm12:$imm))]>;
++
++def ADDI : ArithLogicI<0b0010011, 0b000, "addi", add>;
++def ANDI : ArithLogicI<0b0010011, 0b111, "andi", and>;
++def ORI : ArithLogicI<0b0010011, 0b110, "ori", or>;
++def XORI : ArithLogicI<0b0010011, 0b100, "xori", xor>;
+diff --git a/llvm/lib/Target/Toy/ToyRegisterInfo.td b/llvm/lib/Target/Toy/ToyRegisterInfo.td
+new file mode 100644
+index 000000000000..70365fb547a5
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyRegisterInfo.td
+@@ -0,0 +1,64 @@
++//===-- ToyInstrFormats.td - Toy Instruction Formats -----*- tablegen -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++class ToyReg<bits<5> Enc, string n> : Register<n> {
++  let HWEncoding{4-0} = Enc;
++  let Namespace = "Toy";
++}
++
++def ZERO : ToyReg<0, "zero">;
++def RA :   ToyReg<1, "ra">;
++def SP :   ToyReg<2, "sp">;
++
++def T0 : ToyReg<5, "t0">;
++def T1 : ToyReg<6, "t1">;
++def T2 : ToyReg<7, "t2">;
++
++def S0 : ToyReg<8, "s0">;
++def S1 : ToyReg<9, "s1">;
++
++def A0 : ToyReg<10, "a0">;
++def A1 : ToyReg<11, "a1">;
++def A2 : ToyReg<12, "a2">;
++def A3 : ToyReg<13, "a3">;
++def A4 : ToyReg<14, "a4">;
++def A5 : ToyReg<15, "a5">;
++def A6 : ToyReg<16, "a6">;
++def A7 : ToyReg<17, "a7">;
++
++def FT0: ToyReg<0, "ft0">;
++def FT1: ToyReg<1, "ft1">;
++def FT2: ToyReg<2, "ft2">;
++
++def FS0: ToyReg<8, "fS0">;
++def FS1: ToyReg<9, "fS1">;
++
++def FA0: ToyReg<10, "fa0">;
++def FA1: ToyReg<11, "fa1">;
++def FA2: ToyReg<12, "fa2">;
++def FA3: ToyReg<13, "fa3">;
++def FA4: ToyReg<14, "fa4">;
++def FA5: ToyReg<15, "fa5">;
++def FA6: ToyReg<16, "fa6">;
++def FA7: ToyReg<17, "fa7">;
++
++def GPR:RegisterClass<"Toy", [i32], 32, (add
++    ZERO, RA, SP,
++    T0, T1, T2,
++    S0, S1,
++    A0, A1, A2, A3, A4, A5, A6, A7)>;
++
++def FPR:RegisterClass<"Toy", [f32], 32, (add
++    FT0, FT1, FT2,
++    FS0, FS1,
++    FA0, FA1, FA2, FA3, FA4, FA5, FA6, FA7)>;
++
++def FPR64:RegisterClass<"Toy", [f64], 64, (add
++    FT0, FT1, FT2,
++    FS0, FS1,
++    FA0, FA1, FA2, FA3, FA4, FA5, FA6, FA7)>;

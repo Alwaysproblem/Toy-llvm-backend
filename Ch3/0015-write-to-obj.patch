@@ -1,0 +1,581 @@
+From 94747d402c336f19a8e183efae7a0c2b34ff9210 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 14:26:24 +0000
+Subject: [PATCH 15/17] 0017-write-to-obj.patch
+
+---
+ .../lib/Target/Toy/AsmParser/ToyAsmParser.cpp |   8 ++
+ .../Target/Toy/MCTargetDesc/CMakeLists.txt    |   5 +
+ .../Toy/MCTargetDesc/ToyMCAsmBackend.cpp      | 112 ++++++++++++++++++
+ .../Toy/MCTargetDesc/ToyMCCodeEmitter.cpp     |  24 +++-
+ .../lib/Target/Toy/MCTargetDesc/ToyMCFixups.h |  30 +++++
+ .../Toy/MCTargetDesc/ToyMCObjectWriter.cpp    |  78 ++++++++++++
+ .../Toy/MCTargetDesc/ToyMCTargetDesc.cpp      |  21 ++++
+ .../Toy/MCTargetDesc/ToyTargetStreamer.cpp    |  47 ++++++++
+ .../Toy/MCTargetDesc/ToyTargetStreamer.h      |  47 ++++++++
+ llvm/lib/Target/Toy/ToyRegisterInfo.td        |  58 ++++-----
+ 10 files changed, 398 insertions(+), 32 deletions(-)
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCFixups.h
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h
+
+diff --git a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
+index 65561180750d..05fee7ca7f49 100644
+--- a/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
++++ b/llvm/lib/Target/Toy/AsmParser/ToyAsmParser.cpp
+@@ -12,6 +12,7 @@
+ #include "MCTargetDesc/ToyInstPrinter.h"
+ #include "MCTargetDesc/ToyMCExpr.h"
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "MCTargetDesc/ToyTargetStreamer.h"
+ #include "TargetInfo/ToyTargetInfo.h"
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/Statistic.h"
+@@ -158,6 +159,13 @@ class ToyAsmParser : public MCTargetAsmParser {
+ #define GET_ASSEMBLER_HEADER
+ #include "ToyGenAsmMatcher.inc"
+ 
++  ToyTargetStreamer &getTargetStreamer() {
++    assert(getParser().getStreamer().getTargetStreamer() &&
++           "Toy - asm parser does not have a target streamer");
++    MCTargetStreamer &TS = *getParser().getStreamer().getTargetStreamer();
++    return static_cast<ToyTargetStreamer &>(TS);
++  }
++
+   MCAsmParser &Parser;
+   const MCSubtargetInfo &SubtargetInfo;
+ 
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+index 61efe2a7dd5c..64fb2769caa1 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
++++ b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+@@ -3,7 +3,12 @@ add_llvm_component_library(LLVMToyDesc
+   ToyMCCodeEmitter.cpp
+   ToyInstPrinter.cpp
+   ToyMCAsmInfo.cpp
++  ToyMCAsmBackend.cpp
++  ToyMCCodeEmitter.cpp
+   ToyMCExpr.cpp
++  ToyMCObjectWriter.cpp
++  ToyMCTargetDesc.cpp
++  ToyTargetStreamer.cpp
+  
+   LINK_COMPONENTS
+   MC
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp
+new file mode 100644
+index 000000000000..c9aa44455a93
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCAsmBackend.cpp
+@@ -0,0 +1,112 @@
++//===-- ToyMCAsmBackend.cpp - Toy assembler backend ---------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "MCTargetDesc/ToyMCFixups.h"
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/StringSwitch.h"
++#include "llvm/ADT/Twine.h"
++#include "llvm/ADT/bit.h"
++#include "llvm/MC/MCAsmBackend.h"
++#include "llvm/MC/MCAssembler.h"
++#include "llvm/MC/MCContext.h"
++#include "llvm/MC/MCELFObjectWriter.h"
++#include "llvm/MC/MCFixup.h"
++#include "llvm/MC/MCFixupKindInfo.h"
++#include "llvm/MC/MCInst.h"
++#include "llvm/MC/MCObjectWriter.h"
++#include "llvm/MC/MCSubtargetInfo.h"
++#include "llvm/Support/Endian.h"
++#include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/MathExtras.h"
++#include <cassert>
++#include <cstdint>
++#include <memory>
++#include <optional>
++
++using namespace llvm;
++
++namespace {
++
++class ToyMCAsmBackend : public MCAsmBackend {
++  uint8_t OSABI;
++
++public:
++  ToyMCAsmBackend(uint8_t OSABI)
++      : MCAsmBackend(endianness::little), OSABI(OSABI){};
++
++  // Override MCAsmBackend
++  unsigned getNumFixupKinds() const override;
++  const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override;
++  // std::optional<MCFixupKind> getFixupKind(StringRef Name) const override;
++
++  void applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
++                  const MCValue &Target, MutableArrayRef<char> Data,
++                  uint64_t Value, bool IsResolved,
++                  const MCSubtargetInfo *STI) const override {};
++
++  bool mayNeedRelaxation(const MCInst &Inst,
++                         const MCSubtargetInfo &STI) const override;
++
++  bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value) const override;
++
++  bool writeNopData(raw_ostream &OS, uint64_t Count,
++                    const MCSubtargetInfo *STI) const override;
++
++  std::unique_ptr<MCObjectTargetWriter>
++  createObjectTargetWriter() const override {
++    return createToyObjectWriter(OSABI);
++  }
++};
++} // end anonymous namespace
++
++unsigned ToyMCAsmBackend::getNumFixupKinds() const {
++  return Toy::FixupKind::NumTargetFixupKinds;
++}
++
++const MCFixupKindInfo &
++ToyMCAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
++  const static MCFixupKindInfo Infos[Toy::NumTargetFixupKinds] = {
++      // name                      offset bits  flags
++      {"FK_TOY_HI20", 12, 20, 0},
++      {"FK_TOY_LO12_I", 20, 12, 0},
++      {"FK_TOY_JAL", 12, 20, 0},
++      {"FK_TOY_BRANCH", 0, 32, 0},
++  };
++
++  if (Kind < FirstTargetFixupKind)
++    return MCAsmBackend::getFixupKindInfo(Kind);
++
++  assert(unsigned(Kind - FirstTargetFixupKind) < getNumFixupKinds() &&
++         "Invalid kind!");
++  return Infos[Kind - FirstTargetFixupKind];
++}
++
++bool ToyMCAsmBackend::mayNeedRelaxation(const MCInst &Inst,
++                                        const MCSubtargetInfo &STI) const {
++  return false;
++}
++
++bool ToyMCAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup,
++                                           uint64_t Value) const {
++  return false;
++}
++
++bool ToyMCAsmBackend::writeNopData(raw_ostream &OS, uint64_t Count,
++                                   const MCSubtargetInfo *STI) const {
++  return true;
++}
++
++MCAsmBackend *llvm::createToyMCAsmBackend(const Target &T,
++                                          const MCSubtargetInfo &STI,
++                                          const MCRegisterInfo &MRI,
++                                          const MCTargetOptions &Options) {
++  uint8_t OSABI =
++      MCELFObjectTargetWriter::getOSABI(STI.getTargetTriple().getOS());
++  return new ToyMCAsmBackend(OSABI);
++}
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
+index 30f9f4c3275c..4304970c11db 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCCodeEmitter.cpp
+@@ -10,6 +10,7 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
++#include "MCTargetDesc/ToyMCFixups.h"
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
+ #include "ToyMCExpr.h"
+ #include "llvm/ADT/SmallVector.h"
+@@ -79,6 +80,25 @@ void ToyMCCodeEmitter::encodeInstruction(const MCInst &MI,
+   support::endian::write(CB, Bits, endianness::little);
+ }
+ 
++static Toy::FixupKind fixupKind(const MCExpr *Expr) {
++  if (const ToyMCExpr *McExpr = dyn_cast<ToyMCExpr>(Expr)) {
++    ToyMCExpr::ToyExprKind ExprKind = McExpr->getKind();
++    switch (ExprKind) {
++    case ToyMCExpr::TEK_NONE:
++      return Toy::FixupKind::FK_TOY_NONE;
++    case ToyMCExpr::TEK_HI:
++      return Toy::FixupKind::FK_TOY_HI20;
++    case ToyMCExpr::TEK_LO:
++      return Toy::FixupKind::FK_TOY_LO12_I;
++    case ToyMCExpr::TEK_JAL:
++      return Toy::FixupKind::FK_TOY_JAL;
++    case ToyMCExpr::TEK_BRANCH:
++      return Toy::FixupKind::FK_TOY_BRANCH;
++    }
++  }
++  return Toy::FixupKind::FK_TOY_INVALID;
++}
++
+ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
+                                              const MCOperand &MO,
+                                              SmallVectorImpl<MCFixup> &Fixups,
+@@ -92,9 +112,7 @@ unsigned ToyMCCodeEmitter::getMachineOpValue(const MCInst &MI,
+   const MCExpr *Expr = MO.getExpr();
+   assert(isa<ToyMCExpr>(Expr) && "Expected ToyMCExpr");
+ 
+-  outs() << "getMachineOpValue from ToyMCExpr: ";
+-  Expr->dump();
+-  outs() << "\n";
++  Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(fixupKind(Expr))));
+ 
+   return 0;
+ }
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCFixups.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCFixups.h
+new file mode 100644
+index 000000000000..8d46cd82b3e8
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCFixups.h
+@@ -0,0 +1,30 @@
++//===-- ToyMCFixups.h - Toy-specific fixup entries ------------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCFIXUPS_H
++#define LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCFIXUPS_H
++
++#include "llvm/MC/MCFixup.h"
++
++namespace llvm {
++namespace Toy {
++enum FixupKind {
++  FK_TOY_NONE = 0,
++  // 20-bit fixup corresponding to %hi(foo) for instructions like lui
++  FK_TOY_HI20 = FirstTargetFixupKind,
++  // 12-bit fixup corresponding to %lo(foo) for instructions like addi
++  FK_TOY_LO12_I,
++  FK_TOY_JAL,
++  FK_TOY_BRANCH,
++  FK_TOY_INVALID,
++  NumTargetFixupKinds = FK_TOY_INVALID - FirstTargetFixupKind
++};
++} // end namespace Toy
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCFIXUPS_H
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp
+new file mode 100644
+index 000000000000..0b4b51101398
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCObjectWriter.cpp
+@@ -0,0 +1,78 @@
++//===-- ToyMCObjectWriter.cpp - Toy ELF writer --------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "MCTargetDesc/ToyMCFixups.h"
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "llvm/BinaryFormat/ELF.h"
++#include "llvm/MC/MCContext.h"
++#include "llvm/MC/MCELFObjectWriter.h"
++#include "llvm/MC/MCExpr.h"
++#include "llvm/MC/MCFixup.h"
++#include "llvm/MC/MCObjectWriter.h"
++#include "llvm/MC/MCValue.h"
++#include "llvm/Support/ErrorHandling.h"
++#include <cstdint>
++#include <memory>
++
++using namespace llvm;
++
++namespace {
++
++class ToyObjectWriter : public MCELFObjectTargetWriter {
++public:
++  ToyObjectWriter(uint8_t OSABI, bool HasRelocationAddend = false,
++                  bool Is64 = false)
++      : MCELFObjectTargetWriter(
++            /*Is64Bit_=false*/ Is64, OSABI, ELF::EM_RISCV,
++            /*HasRelocationAddend_ = false*/ HasRelocationAddend) {}
++
++  ~ToyObjectWriter() = default;
++
++  unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
++                        const MCFixup &Fixup, bool IsPCRel) const override;
++  bool needsRelocateWithSymbol(const MCValue &Val, const MCSymbol &Sym,
++                               unsigned Type) const override {
++    return true;
++  }
++};
++} // namespace
++
++unsigned ToyObjectWriter::getRelocType(MCContext &Ctx, const MCValue &Target,
++                                       const MCFixup &Fixup,
++                                       bool IsPCRel) const {
++  unsigned Type = ELF::R_RISCV_NONE;
++  unsigned Kind = Fixup.getTargetKind();
++  switch (Kind) {
++  case Toy::FixupKind::FK_TOY_NONE:
++    Type = ELF::R_RISCV_NONE;
++    break;
++  case Toy::FixupKind::FK_TOY_HI20:
++    Type = ELF::R_RISCV_HI20;
++    break;
++  case Toy::FixupKind::FK_TOY_LO12_I:
++    Type = ELF::R_RISCV_LO12_I;
++    break;
++  case Toy::FixupKind::FK_TOY_JAL:
++    Type = ELF::R_RISCV_JAL;
++    break;
++  case Toy::FixupKind::FK_TOY_BRANCH:
++    Type = ELF::R_RISCV_BRANCH;
++    break;
++  case FK_Data_4:
++    Type = ELF::R_RISCV_32;
++    break;
++  default:
++    llvm_unreachable("Invalid fixup kind!");
++  }
++  return Type;
++}
++
++std::unique_ptr<MCObjectTargetWriter>
++llvm::createToyObjectWriter(uint8_t OSABI) {
++  return std::make_unique<ToyObjectWriter>(OSABI);
++}
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+index 59328844e4d7..880e95b67843 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCTargetDesc.cpp
+@@ -10,6 +10,7 @@
+ #include "TargetInfo/ToyTargetInfo.h"
+ #include "ToyInstPrinter.h"
+ #include "ToyMCAsmInfo.h"
++#include "ToyTargetStreamer.h"
+ #include "llvm/CodeGen/TargetRegisterInfo.h"
+ #include "llvm/MC/MCInstrInfo.h"
+ #include "llvm/MC/MCRegisterInfo.h"
+@@ -60,6 +61,17 @@ static MCInstPrinter *createToyMCInstPrinter(const Triple &T,
+   return new ToyInstPrinter(MAI, MII, MRI);
+ }
+ 
++static MCTargetStreamer *createToyAsmTargetStreamer(MCStreamer &S,
++                                                    formatted_raw_ostream &OS,
++                                                    MCInstPrinter *InstPrint) {
++  return new ToyTargetAsmStreamer(S, OS);
++}
++
++static MCTargetStreamer *
++createToyObjectTargetStreamer(MCStreamer &S, const MCSubtargetInfo &STI) {
++  return new ToyTargetELFStreamer(S, STI);
++}
++
+ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
+   // Register the MC asm info.
+   TargetRegistry::RegisterMCAsmInfo(getTheToyTarget(), createToyMCAsmInfo);
+@@ -77,4 +89,13 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTargetMC() {
+   // Register the MCInstPrinter.
+   TargetRegistry::RegisterMCInstPrinter(getTheToyTarget(),
+                                         createToyMCInstPrinter);
++  // Register the MCAsmBackend.
++  TargetRegistry::RegisterMCAsmBackend(getTheToyTarget(),
++                                       createToyMCAsmBackend);
++  // Register the AsmTargetStreamer.
++  TargetRegistry::RegisterAsmTargetStreamer(getTheToyTarget(),
++                                            createToyAsmTargetStreamer);
++  // Register the ObjectTargetStreamer.
++  TargetRegistry::RegisterObjectTargetStreamer(getTheToyTarget(),
++                                               createToyObjectTargetStreamer);
+ }
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp
+new file mode 100644
+index 000000000000..58bf17c694e5
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.cpp
+@@ -0,0 +1,47 @@
++//===- ToyTargetStreamer.cpp - ToyTargetStreamer class ------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file implements the variois ToyTargetStreamer classes.
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyTargetStreamer.h"
++#include "llvm/BinaryFormat/ELF.h"
++#include "llvm/MC/MCAssembler.h"
++#include "llvm/MC/MCContext.h"
++#include "llvm/MC/MCELFStreamer.h"
++#include "llvm/MC/MCSection.h"
++#include "llvm/MC/MCStreamer.h"
++#include "llvm/MC/MCSubtargetInfo.h"
++#include "llvm/Support/FormattedStream.h"
++
++using namespace llvm;
++
++ToyTargetStreamer::ToyTargetStreamer(MCStreamer &S) : MCTargetStreamer(S) {}
++
++ToyTargetStreamer::~ToyTargetStreamer() = default;
++
++ToyTargetAsmStreamer::ToyTargetAsmStreamer(MCStreamer &S,
++                                           formatted_raw_ostream &OS)
++    : ToyTargetStreamer(S), OS(OS) {}
++
++ToyTargetELFStreamer::ToyTargetELFStreamer(MCStreamer &S,
++                                           const MCSubtargetInfo &STI)
++    : ToyTargetStreamer(S), STI(STI), Streamer(S) {}
++
++MCELFStreamer &ToyTargetELFStreamer::getStreamer() {
++  return static_cast<MCELFStreamer &>(Streamer);
++}
++
++void ToyTargetELFStreamer::finish() {
++  ToyTargetStreamer::finish();
++  ELFObjectWriter &W = getStreamer().getWriter();
++  unsigned EFlags = W.getELFHeaderEFlags();
++  EFlags |= ELF::EF_RISCV_FLOAT_ABI_DOUBLE;
++  W.setELFHeaderEFlags(EFlags);
++}
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h
+new file mode 100644
+index 000000000000..11322ad503d0
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyTargetStreamer.h
+@@ -0,0 +1,47 @@
++//===-- ToyTargetStreamer.h - Toy Target Streamer ------------*- C++ -*--===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYTARGETSTREAMER_H
++#define LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYTARGETSTREAMER_H
++
++#include "llvm/MC/MCStreamer.h"
++
++namespace llvm {
++
++class formatted_raw_ostream;
++class MCELFStreamer;
++
++class ToyTargetStreamer : public MCTargetStreamer {
++public:
++  ToyTargetStreamer(MCStreamer &S);
++  ~ToyTargetStreamer() override;
++
++  void finish() override {};
++};
++
++class ToyTargetAsmStreamer : public ToyTargetStreamer {
++  formatted_raw_ostream &OS;
++
++public:
++  ToyTargetAsmStreamer(MCStreamer &S, formatted_raw_ostream &OS);
++};
++
++class ToyTargetELFStreamer : public ToyTargetStreamer {
++  const MCSubtargetInfo &STI;
++  MCStreamer &Streamer;
++
++  MCELFStreamer &getStreamer();
++
++public:
++  ToyTargetELFStreamer(MCStreamer &S, const MCSubtargetInfo &STI);
++  void finish() override;
++};
++
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYTARGETSTREAMER_H
+diff --git a/llvm/lib/Target/Toy/ToyRegisterInfo.td b/llvm/lib/Target/Toy/ToyRegisterInfo.td
+index 214335280c81..f2d6eccbb63f 100644
+--- a/llvm/lib/Target/Toy/ToyRegisterInfo.td
++++ b/llvm/lib/Target/Toy/ToyRegisterInfo.td
+@@ -11,41 +11,41 @@ class ToyReg<bits<5> Enc, string n> : Register<n> {
+   let Namespace = "Toy";
+ }
+ 
+-def ZERO : ToyReg<0, "zero">;
+-def RA   : ToyReg<1, "ra">;
+-def SP   : ToyReg<2, "sp">;
++def ZERO :   ToyReg<0, "zero">,    DwarfRegNum<[0]>;
++def RA   :   ToyReg<1, "ra">,      DwarfRegNum<[1]>;
++def SP   :   ToyReg<2, "sp">,      DwarfRegNum<[2]>;
+ 
+-def T0   : ToyReg<5, "t0">;
+-def T1   : ToyReg<6, "t1">;
+-def T2   : ToyReg<7, "t2">;
++def T0   :   ToyReg<5, "t0">,      DwarfRegNum<[5]>;
++def T1   :   ToyReg<6, "t1">,      DwarfRegNum<[6]>;
++def T2   :   ToyReg<7, "t2">,      DwarfRegNum<[7]>;
+ 
+-def S0   : ToyReg<8, "s0">;
+-def S1   : ToyReg<9, "s1">;
++def S0   :   ToyReg<8, "s0">,      DwarfRegNum<[8]>;
++def S1   :   ToyReg<9, "s1">,      DwarfRegNum<[9]>;
+ 
+-def A0   : ToyReg<10, "a0">;
+-def A1   : ToyReg<11, "a1">;
+-def A2   : ToyReg<12, "a2">;
+-def A3   : ToyReg<13, "a3">;
+-def A4   : ToyReg<14, "a4">;
+-def A5   : ToyReg<15, "a5">;
+-def A6   : ToyReg<16, "a6">;
+-def A7   : ToyReg<17, "a7">;
++def A0   :   ToyReg<10, "a0">,     DwarfRegNum<[10]>;
++def A1   :   ToyReg<11, "a1">,     DwarfRegNum<[11]>;
++def A2   :   ToyReg<12, "a2">,     DwarfRegNum<[12]>;
++def A3   :   ToyReg<13, "a3">,     DwarfRegNum<[13]>;
++def A4   :   ToyReg<14, "a4">,     DwarfRegNum<[14]>;
++def A5   :   ToyReg<15, "a5">,     DwarfRegNum<[15]>;
++def A6   :   ToyReg<16, "a6">,     DwarfRegNum<[16]>;
++def A7   :   ToyReg<17, "a7">,     DwarfRegNum<[17]>;
+ 
+-def FT0  : ToyReg<0, "ft0">;
+-def FT1  : ToyReg<1, "ft1">;
+-def FT2  : ToyReg<2, "ft2">;
++def FT0  :   ToyReg<0, "ft0">,     DwarfRegNum<[0]>;
++def FT1  :   ToyReg<1, "ft1">,     DwarfRegNum<[1]>;
++def FT2  :   ToyReg<2, "ft2">,     DwarfRegNum<[2]>;
+ 
+-def FS0  : ToyReg<8, "fS0">;
+-def FS1  : ToyReg<9, "fS1">;
++def FS0  :   ToyReg<8, "fS0">,     DwarfRegNum<[8]>;
++def FS1  :   ToyReg<9, "fS1">,     DwarfRegNum<[9]>;
+ 
+-def FA0  : ToyReg<10, "fa0">;
+-def FA1  : ToyReg<11, "fa1">;
+-def FA2  : ToyReg<12, "fa2">;
+-def FA3  : ToyReg<13, "fa3">;
+-def FA4  : ToyReg<14, "fa4">;
+-def FA5  : ToyReg<15, "fa5">;
+-def FA6  : ToyReg<16, "fa6">;
+-def FA7  : ToyReg<17, "fa7">;
++def FA0  :   ToyReg<10, "fa0">,    DwarfRegNum<[10]>;
++def FA1  :   ToyReg<11, "fa1">,    DwarfRegNum<[11]>;
++def FA2  :   ToyReg<12, "fa2">,    DwarfRegNum<[12]>;
++def FA3  :   ToyReg<13, "fa3">,    DwarfRegNum<[13]>;
++def FA4  :   ToyReg<14, "fa4">,    DwarfRegNum<[14]>;
++def FA5  :   ToyReg<15, "fa5">,    DwarfRegNum<[15]>;
++def FA6  :   ToyReg<16, "fa6">,    DwarfRegNum<[16]>;
++def FA7  :   ToyReg<17, "fa7">,    DwarfRegNum<[17]>;
+ 
+ def GPR:RegisterClass<"Toy", [i32], 32, (add
+     ZERO, RA, SP,
+-- 
+2.34.1
+

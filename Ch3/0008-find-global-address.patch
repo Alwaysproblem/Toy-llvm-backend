@@ -1,0 +1,522 @@
+From 4c555db35a184a42b36e2c2433a7606fb46bbf18 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 10:26:52 +0000
+Subject: [PATCH 08/17] 0010-find-global-address.patch
+
+---
+ .../Target/Toy/MCTargetDesc/CMakeLists.txt    |  1 +
+ .../Toy/MCTargetDesc/ToyInstPrinter.cpp       | 15 +++++
+ .../Target/Toy/MCTargetDesc/ToyInstPrinter.h  |  2 +
+ .../lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp | 45 +++++++++++++
+ llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.h  | 54 ++++++++++++++++
+ llvm/lib/Target/Toy/Toy.h                     |  1 -
+ llvm/lib/Target/Toy/ToyAsmPrinter.cpp         | 45 +++++++++++--
+ llvm/lib/Target/Toy/ToyISelLowering.cpp       |  2 +-
+ llvm/lib/Target/Toy/ToyInstrInfo.cpp          | 64 +++++++++++++++++++
+ llvm/lib/Target/Toy/ToyInstrInfo.h            | 14 ++++
+ llvm/lib/Target/Toy/ToyInstrInfo.td           | 10 +++
+ llvm/lib/Target/Toy/ToyMCInstLower.cpp        | 50 +++++++++++++++
+ llvm/lib/Target/Toy/ToyMCInstLower.h          |  8 +++
+ 13 files changed, 304 insertions(+), 7 deletions(-)
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.h
+
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+index a0b51741bbb6..61efe2a7dd5c 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
++++ b/llvm/lib/Target/Toy/MCTargetDesc/CMakeLists.txt
+@@ -3,6 +3,7 @@ add_llvm_component_library(LLVMToyDesc
+   ToyMCCodeEmitter.cpp
+   ToyInstPrinter.cpp
+   ToyMCAsmInfo.cpp
++  ToyMCExpr.cpp
+  
+   LINK_COMPONENTS
+   MC
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.cpp
+index ab668676a7ff..df6aa04fa2e5 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.cpp
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.cpp
+@@ -40,6 +40,21 @@ void ToyInstPrinter::printOperand(const MCInst *MI, int OpNum, raw_ostream &O) {
+     llvm_unreachable("Invalid operand");
+ }
+ 
++void ToyInstPrinter::printOperand(const MCOperand &MO, const MCAsmInfo *MAI,
++                                  raw_ostream &O) {
++  if (MO.isReg()) {
++    if (!MO.getReg())
++      O << '0';
++    else
++      O << StringRef(getRegisterName(MO.getReg())).lower();
++  } else if (MO.isImm())
++    O << MO.getImm();
++  else if (MO.isExpr())
++    MO.getExpr()->print(O, MAI);
++  else
++    llvm_unreachable("Invalid operand");
++}
++
+ void ToyInstPrinter::printInst(const MCInst *MI, uint64_t Address,
+                                StringRef Annot, const MCSubtargetInfo &STI,
+                                raw_ostream &O) {
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.h
+index 94bb8f10c535..8039727f9f8a 100644
+--- a/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.h
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyInstPrinter.h
+@@ -35,6 +35,8 @@ public:
+ 
+   // Print the given operand.
+   void printOperand(const MCInst *MI, int OpNum, raw_ostream &O);
++  static void printOperand(const MCOperand &MO, const MCAsmInfo *MAI,
++                           raw_ostream &O);
+   void printOperand(MCInst const *MI, uint64_t _Address, unsigned OpNum,
+                     raw_ostream &O) {
+     printOperand(MI, OpNum, O);
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
+new file mode 100644
+index 000000000000..d2abe53f7293
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.cpp
+@@ -0,0 +1,45 @@
++//===---- ToyMCTargetDesc.cpp - Toy target descriptions -------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyMCExpr.h"
++#include "llvm/Support/raw_ostream.h"
++
++using namespace llvm;
++
++const ToyMCExpr *ToyMCExpr::create(const MCExpr *Expr, ToyExprKind Kind) {
++  return new ToyMCExpr(Expr, Kind);
++}
++
++void ToyMCExpr::printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const {
++  switch (Kind) {
++  case TEK_HI:
++    OS << "%hi(";
++    break;
++  case TEK_LO:
++    OS << "%lo (";
++    break;
++  default:
++    break;
++  }
++
++  Expr->print(OS, MAI, true);
++
++  switch (Kind) {
++  case TEK_HI:
++  case TEK_LO:
++    OS << ")";
++    break;
++  default:
++    break;
++  }
++}
++
++bool ToyMCExpr::evaluateAsRelocatableImpl(MCValue &Res, const MCAssembler *Asm,
++                                          const MCFixup *Fixup) const {
++  return getSubExpr()->evaluateAsRelocatable(Res, Asm, Fixup);
++}
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.h
+new file mode 100644
+index 000000000000..1f06124e3043
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyMCExpr.h
+@@ -0,0 +1,54 @@
++//===---------- ToyMCExpr.h - Toy target descriptions ------------*- C++-*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCEXPR_H
++#define LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCEXPR_H
++
++#include "llvm/MC/MCAssembler.h"
++#include "llvm/MC/MCExpr.h"
++#include "llvm/MC/MCStreamer.h"
++#include "llvm/MC/MCValue.h"
++
++namespace llvm {
++class ToyMCExpr : public MCTargetExpr {
++public:
++  enum ToyExprKind {
++    TEK_NONE,
++    TEK_HI,
++    TEK_LO,
++    TEK_JAL,
++    TEK_BRANCH,
++  };
++  ToyMCExpr(const MCExpr *Expr, ToyExprKind Kind) : Kind(Kind), Expr(Expr) {}
++
++  static const ToyMCExpr *create(const MCExpr *Expr, ToyExprKind Kind);
++
++  void printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const override;
++
++  void visitUsedExpr(MCStreamer &Streamer) const override {
++    // NOTE: ToyMCExpr 的 kind 是 Target, 导致 MCStreamer 不知道如何 visit 它的
++    // operand, 需要自己实现. visitUsedExpr 会把 operand 中用到的 symbol ref 加
++    // 入到符号表中
++    Streamer.visitUsedExpr(*getSubExpr());
++  };
++
++  MCFragment *findAssociatedFragment() const override { return NULL; }
++  void fixELFSymbolsInTLSFixups(MCAssembler &Asm) const override {};
++  bool evaluateAsRelocatableImpl(MCValue &Res, const MCAssembler *Asm,
++                                 const MCFixup *Fixup) const override;
++  const MCExpr *getSubExpr() const { return Expr; }
++  ToyExprKind getKind() const { return Kind; }
++
++private:
++  const ToyExprKind Kind;
++  const MCExpr *Expr;
++};
++
++} // namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYMCEXPR_H
+diff --git a/llvm/lib/Target/Toy/Toy.h b/llvm/lib/Target/Toy/Toy.h
+index 0ac07339b1c9..2674aa085e7a 100644
+--- a/llvm/lib/Target/Toy/Toy.h
++++ b/llvm/lib/Target/Toy/Toy.h
+@@ -14,7 +14,6 @@
+ #ifndef LLVM_LIB_TARGET_TOY_TOY_H
+ #define LLVM_LIB_TARGET_TOY_TOY_H
+ 
+-#include "MCTargetDesc/ToyBaseInfo.h"
+ #include "llvm/Support/CodeGen.h"
+ 
+ namespace llvm {
+diff --git a/llvm/lib/Target/Toy/ToyAsmPrinter.cpp b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
+index 422a19e5e9a3..e9c0cfeba6f0 100644
+--- a/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
++++ b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
+@@ -11,18 +11,25 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
++#include "MCTargetDesc/ToyInstPrinter.h"
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
+ #include "TargetInfo/ToyTargetInfo.h"
+ #include "ToyMCInstLower.h"
++#include "ToySubtarget.h"
+ #include "llvm/CodeGen/AsmPrinter.h"
+ #include "llvm/CodeGen/MachineInstr.h"
+ #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
++#include "llvm/IR/Mangler.h"
+ #include "llvm/MC/MCAsmInfo.h"
+ #include "llvm/MC/MCContext.h"
+ #include "llvm/MC/MCInst.h"
+ #include "llvm/MC/MCStreamer.h"
++#include "llvm/MC/MCSymbol.h"
+ #include "llvm/MC/TargetRegistry.h"
++#include "llvm/Support/Compiler.h"
++#include "llvm/Support/raw_ostream.h"
+ #include <memory>
++#include <utility>
+ 
+ using namespace llvm;
+ 
+@@ -38,24 +45,52 @@ public:
+   StringRef getPassName() const override { return "Toy Assembly Printer"; }
+   bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
+                                    const MachineInstr *MI);
+-  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp) const {
+-    ToyMCInstLower Lower;
++
++  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp) {
++    ToyMCInstLower Lower(MF->getContext(), *this);
+     MCOp = Lower.lowerOperand(MO);
+     return true;
+   }
++
++  bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
++                       const char *ExtraCode, raw_ostream &OS) override;
+   void emitInstruction(const MachineInstr *MI) override;
+ };
+ } // end of anonymous namespace
+ 
+ #include "ToyGenMCPseudoLowering.inc"
+ 
++bool ToyAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
++                                    const char *ExtraCode, raw_ostream &OS) {
++  if (ExtraCode)
++    return AsmPrinter::PrintAsmOperand(MI, OpNo, ExtraCode, OS);
++  ToyMCInstLower Lower(MF->getContext(), *this);
++  MCOperand MO(Lower.lowerOperand(MI->getOperand(OpNo)));
++  ToyInstPrinter::printOperand(MO, MAI, OS);
++  return false;
++}
++
+ void ToyAsmPrinter::emitInstruction(const MachineInstr *MI) {
+   if (emitPseudoExpansionLowering(*OutStreamer, MI))
+     return;
+   MCInst LoweredMI;
+-  ToyMCInstLower Lower;
+-  Lower.lower(MI, LoweredMI);
+-  EmitToStreamer(*OutStreamer, LoweredMI);
++  MachineBasicBlock::const_instr_iterator I = MI->getIterator();
++  MachineBasicBlock::const_instr_iterator E = MI->getParent()->instr_end();
++
++  do {
++    // Skip the BUNDLE pseudo instruction and lower the contents.
++    if (I->isBundle())
++      continue;
++
++    MCInst LoweredMI;
++    switch (I->getOpcode()) {
++    default:
++      ToyMCInstLower Lower(MF->getContext(), *this);
++      Lower.lower(&*I, LoweredMI);
++      break;
++    }
++    EmitToStreamer(*OutStreamer, LoweredMI);
++  } while ((++I != E) && I->isInsideBundle()); // Delay slot check.
+ }
+ 
+ // Force static initialization.
+diff --git a/llvm/lib/Target/Toy/ToyISelLowering.cpp b/llvm/lib/Target/Toy/ToyISelLowering.cpp
+index def870af9f1e..cf621ef4ee65 100644
+--- a/llvm/lib/Target/Toy/ToyISelLowering.cpp
++++ b/llvm/lib/Target/Toy/ToyISelLowering.cpp
+@@ -13,8 +13,8 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "ToyISelLowering.h"
++#include "MCTargetDesc/ToyBaseInfo.h"
+ #include "MCTargetDesc/ToyMCTargetDesc.h"
+-#include "Toy.h"
+ #include "ToySubtarget.h"
+ #include "llvm/CodeGen/CallingConvLower.h"
+ #include "llvm/CodeGen/MachineFrameInfo.h"
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.cpp b/llvm/lib/Target/Toy/ToyInstrInfo.cpp
+index bbbb3e012803..7015ba3c9998 100644
+--- a/llvm/lib/Target/Toy/ToyInstrInfo.cpp
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.cpp
+@@ -34,3 +34,67 @@ using namespace llvm;
+ void ToyInstrInfo::anchor() {}
+ 
+ ToyInstrInfo::ToyInstrInfo(ToySubtarget &STI) : ToyGenInstrInfo(), STI(STI) {}
++
++void ToyInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
++                                       MachineBasicBlock::iterator MI,
++                                       Register SrcReg, bool isKill, int FI,
++                                       const TargetRegisterClass *RC,
++                                       const TargetRegisterInfo *TRI,
++                                       Register VReg) const {
++  DebugLoc DL;
++  int Opcode = 0;
++  if (Toy::GPRRegClass.hasSubClassEq(RC))
++    Opcode = Toy::STOREWFI;
++  else if (Toy::FPRRegClass.hasSubClassEq(RC))
++    Opcode = Toy::STORFFI;
++  else if (Toy::FPR64RegClass.hasSubClassEq(RC))
++    Opcode = Toy::STORDFI;
++  else {
++    llvm_unreachable("Impossible store reg to stack");
++  }
++
++  BuildMI(MBB, MI, DL, get(Opcode))
++      .addReg(SrcReg, getKillRegState(isKill))
++      .addFrameIndex(FI)
++      .addImm(0);
++}
++
++void ToyInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
++                                        MachineBasicBlock::iterator MI,
++                                        Register DestReg, int FI,
++                                        const TargetRegisterClass *RC,
++                                        const TargetRegisterInfo *TRI,
++                                        Register VReg) const {
++  DebugLoc DL;
++  int Opcode = 0;
++  if (Toy::GPRRegClass.hasSubClassEq(RC))
++    Opcode = Toy::LOADWFI;
++  else if (Toy::FPRRegClass.hasSubClassEq(RC))
++    Opcode = Toy::LOADFFI;
++  else if (Toy::FPR64RegClass.hasSubClassEq(RC))
++    Opcode = Toy::LOADDFI;
++  else {
++    llvm_unreachable("Impossible load reg from stack");
++  }
++
++  BuildMI(MBB, MI, DL, get(Opcode), DestReg).addFrameIndex(FI).addImm(0);
++}
++
++void ToyInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
++                               MachineBasicBlock::iterator I,
++                               const DebugLoc &DL, MCRegister DestReg,
++                               MCRegister SrcReg, bool KillSrc) const {
++
++  int Opcode = 0;
++  if (Toy::GPRRegClass.contains(SrcReg)) {
++    Opcode = Toy::MV;
++  } else if (Toy::FPR64RegClass.contains(SrcReg)) {
++    // NOTE: both FPR and FPR64 contains f-regs
++    Opcode = Toy::FMVD;
++  } else {
++    llvm_unreachable("Impossible reg-to-reg copy");
++  }
++
++  MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(Opcode), DestReg);
++  MIB.addReg(SrcReg, getKillRegState(KillSrc));
++}
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.h b/llvm/lib/Target/Toy/ToyInstrInfo.h
+index 89094cb9675e..5574f169e6b6 100644
+--- a/llvm/lib/Target/Toy/ToyInstrInfo.h
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.h
+@@ -32,6 +32,20 @@ class ToyInstrInfo : public ToyGenInstrInfo {
+ 
+ public:
+   explicit ToyInstrInfo(ToySubtarget &STI);
++  void storeRegToStackSlot(MachineBasicBlock &MBB,
++                           MachineBasicBlock::iterator MBBI, Register SrcReg,
++                           bool isKill, int FrameIndex,
++                           const TargetRegisterClass *RC,
++                           const TargetRegisterInfo *TRI,
++                           Register VReg) const override;
++  void loadRegFromStackSlot(MachineBasicBlock &MBB,
++                            MachineBasicBlock::iterator MI, Register DestReg,
++                            int FrameIndex, const TargetRegisterClass *RC,
++                            const TargetRegisterInfo *TRI,
++                            Register VReg) const override;
++  void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
++                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
++                   bool KillSrc) const override;
+ };
+ 
+ } // end namespace llvm
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
+index ee42da79a36f..67160870d930 100644
+--- a/llvm/lib/Target/Toy/ToyInstrInfo.td
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
+@@ -112,3 +112,13 @@ defm LOADB  : LOAD<0b0000011, 0b000, extloadi8,  "lb",  GPR>;
+ defm LOADH  : LOAD<0b0000011, 0b001, extloadi16, "lh",  GPR>;
+ defm LOADF  : LOAD<0b0000111, 0b010, load,       "flw", FPR>;
+ defm LOADD  : LOAD<0b0000111, 0b011, load,       "fld", FPR64>;
++
++def MV : ToyPseudo<(outs GPR:$rd), (ins GPR:$rs1),"", []>,
++         PseudoInstExpansion<(ADD GPR:$rd, ZERO, GPR:$rs1)>;
++
++def FSGNJD : InstR<0b1010011, 0b0010001, 0b000, 
++                   (outs FPR64:$rd), (ins FPR64:$rs1, FPR64:$rs2),
++                   "fsgnj.d\t$rd, $rs1, $rs2", []>;
++
++def FMVD : ToyPseudo<(outs FPR64:$rd), (ins FPR64:$rs1),"", []>,
++          PseudoInstExpansion<(FSGNJD FPR64:$rd, FPR64:$rs1, FPR64:$rs1)>;
+diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.cpp b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+index 3fbc074f80b3..906f64512719 100644
+--- a/llvm/lib/Target/Toy/ToyMCInstLower.cpp
++++ b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+@@ -7,7 +7,10 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "ToyMCInstLower.h"
++#include "MCTargetDesc/ToyBaseInfo.h"
++#include "MCTargetDesc/ToyMCExpr.h"
+ #include "llvm/CodeGen/AsmPrinter.h"
++#include "llvm/CodeGen/MachineFunction.h"
+ #include "llvm/CodeGen/MachineInstr.h"
+ #include "llvm/CodeGen/MachineOperand.h"
+ #include "llvm/MC/MCInst.h"
+@@ -15,6 +18,48 @@
+ 
+ using namespace llvm;
+ 
++ToyMCInstLower::ToyMCInstLower(MCContext &Ctx, AsmPrinter &Printer)
++    : Ctx(Ctx), Printer(Printer) {}
++
++MCOperand ToyMCInstLower::LowerSymbolOperand(const MachineOperand &MO) const {
++  MCContext &Ctx = Printer.OutContext;
++  ToyMCExpr::ToyExprKind TargetKind = ToyMCExpr::TEK_NONE;
++  const MCSymbol *Symbol;
++
++  switch (MO.getTargetFlags()) {
++  default:
++    llvm_unreachable("Invalid target flag!");
++  case ToyII::MO_NO_FLAG:
++    break;
++  case ToyII::MO_HI:
++    TargetKind = ToyMCExpr::TEK_HI;
++    break;
++  case ToyII::MO_LO:
++    TargetKind = ToyMCExpr::TEK_LO;
++    break;
++  }
++
++  switch (MO.getType()) {
++  case MachineOperand::MO_ConstantPoolIndex:
++    Symbol = Printer.GetCPISymbol(MO.getIndex());
++    break;
++  case MachineOperand::MO_GlobalAddress:
++    Symbol = Printer.getSymbol(MO.getGlobal());
++    break;
++  case MachineOperand::MO_ExternalSymbol:
++    Symbol = Printer.GetExternalSymbolSymbol(MO.getSymbolName());
++    break;
++  default:
++    llvm_unreachable("<unknown operand type>");
++  }
++
++  const MCExpr *Expr =
++      MCSymbolRefExpr::create(Symbol, MCSymbolRefExpr::VK_None, Ctx);
++  Expr = ToyMCExpr::create(Expr, TargetKind);
++
++  return MCOperand::createExpr(Expr);
++}
++
+ MCOperand ToyMCInstLower::lowerOperand(const MachineOperand &MO) const {
+   switch (MO.getType()) {
+   case MachineOperand::MO_Register:
+@@ -22,6 +67,11 @@ MCOperand ToyMCInstLower::lowerOperand(const MachineOperand &MO) const {
+ 
+   case MachineOperand::MO_Immediate:
+     return MCOperand::createImm(MO.getImm());
++  case MachineOperand::MO_GlobalAddress:
++  case MachineOperand::MO_ConstantPoolIndex:
++  case MachineOperand::MO_ExternalSymbol: {
++    return LowerSymbolOperand(MO);
++  }
+ 
+   default:
+     llvm_unreachable("Operand type not handled");
+diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.h b/llvm/lib/Target/Toy/ToyMCInstLower.h
+index 062a59bb2e50..ff451073e572 100644
+--- a/llvm/lib/Target/Toy/ToyMCInstLower.h
++++ b/llvm/lib/Target/Toy/ToyMCInstLower.h
+@@ -9,6 +9,7 @@
+ #ifndef LLVM_LIB_TARGET_TOY_TOYMCINSTLOWER_H
+ #define LLVM_LIB_TARGET_TOY_TOYMCINSTLOWER_H
+ 
++#include "llvm/MC/MCExpr.h"
+ #include "llvm/Support/Compiler.h"
+ 
+ namespace llvm {
+@@ -21,9 +22,16 @@ class Mangler;
+ 
+ class LLVM_LIBRARY_VISIBILITY ToyMCInstLower {
+ public:
++  MCContext &Ctx;
++  AsmPrinter &Printer;
++
++  ToyMCInstLower(MCContext &Ctx, AsmPrinter &Printer);
++
+   // Lower MachineInstr MI to MCInst OutMI.
+   void lower(const MachineInstr *MI, MCInst &OutMI) const;
+ 
++  MCOperand LowerSymbolOperand(const MachineOperand &MO) const;
++
+   // Return an MCOperand for MO.
+   MCOperand lowerOperand(const MachineOperand &MO) const;
+ };
+-- 
+2.34.1
+

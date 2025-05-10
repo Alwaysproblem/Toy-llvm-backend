@@ -1,0 +1,122 @@
+From 3ba3e7cf68e477611edc00a93fec788eeabecfd8 Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Mon, 28 Apr 2025 01:30:12 +0000
+Subject: [PATCH 01/17] 
+ 0001-Adding-the-new-architecture-to-the-Triple-class.patch
+
+---
+ llvm/include/llvm/TargetParser/Triple.h |  6 ++++++
+ llvm/lib/TargetParser/Triple.cpp        | 10 ++++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/llvm/include/llvm/TargetParser/Triple.h b/llvm/include/llvm/TargetParser/Triple.h
+index d2126a03db90..33abb86bf669 100644
+--- a/llvm/include/llvm/TargetParser/Triple.h
++++ b/llvm/include/llvm/TargetParser/Triple.h
+@@ -61,6 +61,7 @@ public:
+     loongarch32,    // LoongArch (32-bit): loongarch32
+     loongarch64,    // LoongArch (64-bit): loongarch64
+     m68k,           // M68k: Motorola 680x0 family
++    toy,            // ! Toy: the example Toy RiscV example for LLVM.
+     mips,           // MIPS: mips, mipsallegrex, mipsr6
+     mipsel,         // MIPSEL: mipsel, mipsallegrexe, mipsr6el
+     mips64,         // MIPS64: mips64, mips64r6, mipsn32, mipsn32r6
+@@ -943,6 +944,11 @@ public:
+   /// Tests whether the target is LoongArch (32- and 64-bit).
+   bool isLoongArch() const { return isLoongArch32() || isLoongArch64(); }
+ 
++  /// Tests whether the target is Toy.
++  bool isToy() const {
++    return getArch() == Triple::toy;
++  }
++
+   /// Tests whether the target is MIPS 32-bit (little and big endian).
+   bool isMIPS32() const {
+     return getArch() == Triple::mips || getArch() == Triple::mipsel;
+diff --git a/llvm/lib/TargetParser/Triple.cpp b/llvm/lib/TargetParser/Triple.cpp
+index 21d6c74b5956..fd35220d3a45 100644
+--- a/llvm/lib/TargetParser/Triple.cpp
++++ b/llvm/lib/TargetParser/Triple.cpp
+@@ -49,6 +49,7 @@ StringRef Triple::getArchTypeName(ArchType Kind) {
+   case loongarch32:    return "loongarch32";
+   case loongarch64:    return "loongarch64";
+   case m68k:           return "m68k";
++  case toy:            return "toy";
+   case mips64:         return "mips64";
+   case mips64el:       return "mips64el";
+   case mips:           return "mips";
+@@ -170,6 +171,7 @@ StringRef Triple::getArchTypePrefix(ArchType Kind) {
+   case ppcle:       return "ppc";
+ 
+   case m68k:        return "m68k";
++  case toy:        return "toy";
+ 
+   case mips:
+   case mipsel:
+@@ -406,6 +408,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
+     .Case("avr", avr)
+     .StartsWith("bpf", BPFArch)
+     .Case("m68k", m68k)
++    .Case("toy", toy)
+     .Case("mips", mips)
+     .Case("mipsel", mipsel)
+     .Case("mips64", mips64)
+@@ -556,6 +559,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
+           .Case("thumbeb", Triple::thumbeb)
+           .Case("avr", Triple::avr)
+           .Case("m68k", Triple::m68k)
++          .Case("toy", Triple::toy)
+           .Case("msp430", Triple::msp430)
+           .Cases("mips", "mipseb", "mipsallegrex", "mipsisa32r6", "mipsr6",
+                  Triple::mips)
+@@ -919,6 +923,7 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
+   case Triple::loongarch32:
+   case Triple::loongarch64:
+   case Triple::m68k:
++  case Triple::toy:
+   case Triple::mips64:
+   case Triple::mips64el:
+   case Triple::mips:
+@@ -1615,6 +1620,7 @@ unsigned Triple::getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
+   case llvm::Triple::le32:
+   case llvm::Triple::loongarch32:
+   case llvm::Triple::m68k:
++  case llvm::Triple::toy:
+   case llvm::Triple::mips:
+   case llvm::Triple::mipsel:
+   case llvm::Triple::nvptx:
+@@ -1707,6 +1713,7 @@ Triple Triple::get32BitArchVariant() const {
+   case Triple::le32:
+   case Triple::loongarch32:
+   case Triple::m68k:
++  case Triple::toy:
+   case Triple::mips:
+   case Triple::mipsel:
+   case Triple::nvptx:
+@@ -1772,6 +1779,7 @@ Triple Triple::get64BitArchVariant() const {
+   case Triple::kalimba:
+   case Triple::lanai:
+   case Triple::m68k:
++  case Triple::toy:
+   case Triple::msp430:
+   case Triple::r600:
+   case Triple::shave:
+@@ -1867,6 +1875,7 @@ Triple Triple::getBigEndianArchVariant() const {
+   case Triple::r600:
+   case Triple::renderscript32:
+   case Triple::renderscript64:
++  case Triple::toy:
+   case Triple::riscv32:
+   case Triple::riscv64:
+   case Triple::shave:
+@@ -1978,6 +1987,7 @@ bool Triple::isLittleEndian() const {
+   case Triple::renderscript64:
+   case Triple::riscv32:
+   case Triple::riscv64:
++  case Triple::toy:
+   case Triple::shave:
+   case Triple::sparcel:
+   case Triple::spir64:
+-- 
+2.34.1
+

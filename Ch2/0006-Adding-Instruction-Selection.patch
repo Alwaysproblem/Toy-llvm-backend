@@ -1,0 +1,1645 @@
+From a24f8f24c930b2928d6a4e2403bc1134c30aae9e Mon Sep 17 00:00:00 2001
+From: Alwaysproblem <reganyang0415@gmail.com>
+Date: Fri, 9 May 2025 09:39:42 +0000
+Subject: [PATCH 06/17] 0007-Adding-Instruction-Selection.patch
+
+---
+ llvm/lib/Target/Toy/CMakeLists.txt            |  29 +-
+ .../lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h |  22 ++
+ llvm/lib/Target/Toy/Toy.h                     |  37 ++
+ llvm/lib/Target/Toy/Toy.td                    |   1 +
+ llvm/lib/Target/Toy/ToyAsmPrinter.cpp         |  64 ++++
+ llvm/lib/Target/Toy/ToyCallingConv.td         |  21 ++
+ llvm/lib/Target/Toy/ToyFrameLowering.cpp      |  27 ++
+ llvm/lib/Target/Toy/ToyFrameLowering.h        |  29 ++
+ llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp       |  76 ++++
+ llvm/lib/Target/Toy/ToyISelLowering.cpp       | 333 ++++++++++++++++++
+ llvm/lib/Target/Toy/ToyISelLowering.h         |  64 ++++
+ llvm/lib/Target/Toy/ToyInstrFormats.td        |  58 +--
+ llvm/lib/Target/Toy/ToyInstrInfo.cpp          |  36 ++
+ llvm/lib/Target/Toy/ToyInstrInfo.h            |  39 ++
+ llvm/lib/Target/Toy/ToyInstrInfo.td           |  45 +++
+ llvm/lib/Target/Toy/ToyMCInstLower.cpp        |  38 ++
+ llvm/lib/Target/Toy/ToyMCInstLower.h          |  32 ++
+ llvm/lib/Target/Toy/ToyRegisterInfo.cpp       | 105 ++++++
+ llvm/lib/Target/Toy/ToyRegisterInfo.h         |  43 +++
+ llvm/lib/Target/Toy/ToySubtarget.cpp          |  32 ++
+ llvm/lib/Target/Toy/ToySubtarget.h            |  67 ++++
+ llvm/lib/Target/Toy/ToyTargetMachine.cpp      | 110 +++++-
+ llvm/lib/Target/Toy/ToyTargetMachine.h        |  44 +++
+ 23 files changed, 1320 insertions(+), 32 deletions(-)
+ create mode 100644 llvm/lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h
+ create mode 100644 llvm/lib/Target/Toy/Toy.h
+ create mode 100644 llvm/lib/Target/Toy/ToyAsmPrinter.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyCallingConv.td
+ create mode 100644 llvm/lib/Target/Toy/ToyFrameLowering.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyFrameLowering.h
+ create mode 100644 llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyISelLowering.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyISelLowering.h
+ create mode 100644 llvm/lib/Target/Toy/ToyInstrInfo.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyInstrInfo.h
+ create mode 100644 llvm/lib/Target/Toy/ToyMCInstLower.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyMCInstLower.h
+ create mode 100644 llvm/lib/Target/Toy/ToyRegisterInfo.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToyRegisterInfo.h
+ create mode 100644 llvm/lib/Target/Toy/ToySubtarget.cpp
+ create mode 100644 llvm/lib/Target/Toy/ToySubtarget.h
+ create mode 100644 llvm/lib/Target/Toy/ToyTargetMachine.h
+
+diff --git a/llvm/lib/Target/Toy/CMakeLists.txt b/llvm/lib/Target/Toy/CMakeLists.txt
+index 5fc8bf233053..bcec1b615ae7 100644
+--- a/llvm/lib/Target/Toy/CMakeLists.txt
++++ b/llvm/lib/Target/Toy/CMakeLists.txt
+@@ -4,8 +4,11 @@ set(LLVM_TARGET_DEFINITIONS Toy.td)
+ 
+ tablegen(LLVM ToyGenAsmMatcher.inc -gen-asm-matcher)
+ tablegen(LLVM ToyGenAsmWriter.inc -gen-asm-writer)
++tablegen(LLVM ToyGenCallingConv.inc -gen-callingconv)
++tablegen(LLVM ToyGenDAGISel.inc -gen-dag-isel)
+ tablegen(LLVM ToyGenMCCodeEmitter.inc -gen-emitter)
+ tablegen(LLVM ToyGenDisassemblerTables.inc -gen-disassembler)
++tablegen(LLVM ToyGenMCPseudoLowering.inc -gen-pseudo-lowering)
+ tablegen(LLVM ToyGenInstrInfo.inc -gen-instr-info)
+ tablegen(LLVM ToyGenRegisterInfo.inc -gen-register-info)
+ tablegen(LLVM ToyGenSubtargetInfo.inc -gen-subtarget)
+@@ -13,10 +16,32 @@ tablegen(LLVM ToyGenSubtargetInfo.inc -gen-subtarget)
+ add_public_tablegen_target(ToyCommonTableGen)
+ 
+ add_llvm_target(ToyCodeGen
++  ToyAsmPrinter.cpp
++  ToyTargetMachine.cpp
++  ToyFrameLowering.cpp
++  ToyInstrInfo.cpp
++  ToyISelDAGToDAG.cpp
++  ToyISelLowering.cpp
++  ToyMCInstLower.cpp
++  ToyRegisterInfo.cpp
++  ToySubtarget.cpp
+   ToyTargetMachine.cpp
+ 
+-  ADD_TO_COMPONENT
+-  Toy
++  LINK_COMPONENTS
++  Analysis
++  AsmPrinter
++  CodeGen
++  Core
++  MC
++  Scalar
++  SelectionDAG
++  Support
++  ToyDesc
++  ToyInfo
++  Target
++ 
++   ADD_TO_COMPONENT
++   Toy
+   )
+ 
+ add_subdirectory(AsmParser)
+diff --git a/llvm/lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h b/llvm/lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h
+new file mode 100644
+index 000000000000..c8d8e52cc903
+--- /dev/null
++++ b/llvm/lib/Target/Toy/MCTargetDesc/ToyBaseInfo.h
+@@ -0,0 +1,22 @@
++//===-- ToyBaseInfo.h - Toy target descriptions -----------------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYBASEINFO_H
++#define LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYBASEINFO_H
++
++namespace llvm {
++namespace ToyII {
++enum TOF {
++  MO_NO_FLAG,
++  MO_HI,
++  MO_LO,
++};
++}
++} // namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_MCTARGETDESC_TOYBASEINFO_H
+diff --git a/llvm/lib/Target/Toy/Toy.h b/llvm/lib/Target/Toy/Toy.h
+new file mode 100644
+index 000000000000..0ac07339b1c9
+--- /dev/null
++++ b/llvm/lib/Target/Toy/Toy.h
+@@ -0,0 +1,37 @@
++//===-- Toy.h - Top-level interface for Toy representation ------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file contains the entry points for global functions defined in the LLVM
++// Toy back-end.
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOY_H
++#define LLVM_LIB_TARGET_TOY_TOY_H
++
++#include "MCTargetDesc/ToyBaseInfo.h"
++#include "llvm/Support/CodeGen.h"
++
++namespace llvm {
++class ToyRegisterBankInfo;
++class ToySubtarget;
++class ToyTargetMachine;
++class FunctionPass;
++class InstructionSelector;
++class PassRegistry;
++
++FunctionPass *createToyISelDag(ToyTargetMachine &TM, CodeGenOptLevel OptLevel);
++
++void initializeToyDAGToDAGISelLegacyPass(PassRegistry &);
++
++InstructionSelector *createToyInstructionSelector(const ToyTargetMachine &,
++                                                  const ToySubtarget &,
++                                                  const ToyRegisterBankInfo &);
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOY_H
+diff --git a/llvm/lib/Target/Toy/Toy.td b/llvm/lib/Target/Toy/Toy.td
+index 4a02ab43225b..5cc49b8af8db 100644
+--- a/llvm/lib/Target/Toy/Toy.td
++++ b/llvm/lib/Target/Toy/Toy.td
+@@ -15,6 +15,7 @@
+ 
+ include "llvm/Target/Target.td"
+ include "ToyRegisterInfo.td"
++include "ToyCallingConv.td"
+ include "ToyInstrFormats.td"
+ include "ToyInstrInfo.td"
+ 
+diff --git a/llvm/lib/Target/Toy/ToyAsmPrinter.cpp b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
+new file mode 100644
+index 000000000000..422a19e5e9a3
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyAsmPrinter.cpp
+@@ -0,0 +1,64 @@
++//===-- ToyAsmPrinter.cpp - Toy LLVM assembly writer ----------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file contains a printer that converts from our internal representation
++// of machine-dependent LLVM code to GAS-format Toy assembly language.
++//
++//===----------------------------------------------------------------------===//
++
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "TargetInfo/ToyTargetInfo.h"
++#include "ToyMCInstLower.h"
++#include "llvm/CodeGen/AsmPrinter.h"
++#include "llvm/CodeGen/MachineInstr.h"
++#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
++#include "llvm/MC/MCAsmInfo.h"
++#include "llvm/MC/MCContext.h"
++#include "llvm/MC/MCInst.h"
++#include "llvm/MC/MCStreamer.h"
++#include "llvm/MC/TargetRegistry.h"
++#include <memory>
++
++using namespace llvm;
++
++#define DEBUG_TYPE "asm-printer"
++
++namespace {
++class ToyAsmPrinter : public AsmPrinter {
++public:
++  explicit ToyAsmPrinter(TargetMachine &TM,
++                         std::unique_ptr<MCStreamer> Streamer)
++      : AsmPrinter(TM, std::move(Streamer)) {}
++
++  StringRef getPassName() const override { return "Toy Assembly Printer"; }
++  bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
++                                   const MachineInstr *MI);
++  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp) const {
++    ToyMCInstLower Lower;
++    MCOp = Lower.lowerOperand(MO);
++    return true;
++  }
++  void emitInstruction(const MachineInstr *MI) override;
++};
++} // end of anonymous namespace
++
++#include "ToyGenMCPseudoLowering.inc"
++
++void ToyAsmPrinter::emitInstruction(const MachineInstr *MI) {
++  if (emitPseudoExpansionLowering(*OutStreamer, MI))
++    return;
++  MCInst LoweredMI;
++  ToyMCInstLower Lower;
++  Lower.lower(MI, LoweredMI);
++  EmitToStreamer(*OutStreamer, LoweredMI);
++}
++
++// Force static initialization.
++extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyAsmPrinter() {
++  RegisterAsmPrinter<ToyAsmPrinter> X(getTheToyTarget());
++}
+diff --git a/llvm/lib/Target/Toy/ToyCallingConv.td b/llvm/lib/Target/Toy/ToyCallingConv.td
+new file mode 100644
+index 000000000000..ee4c23fe735f
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyCallingConv.td
+@@ -0,0 +1,21 @@
++//===-- ToyCallingConv.td - Toy Calling Conventions ------*- tablegen -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This describes the calling conventions for the Toy architectures.
++// Only the OpenBSD variant is supported.
++//
++//===----------------------------------------------------------------------===//
++
++def CC_Toy : CallingConv<[
++    CCIfType<[i32], CCAssignToReg<[A0, A1, A2, A3, A4, A5, A6, A7]>>,
++    CCIfType<[f32], CCAssignToReg<[FA0, FA1, FA2, FA3, FA4, FA5, FA6, FA7]>>,
++    CCIfType<[f64], CCAssignToReg<[FA0, FA1, FA2, FA3, FA4, FA5, FA6, FA7]>>,
++    CCAssignToStack<4, 4>,
++]>;
++
++def CSR_Toy : CalleeSavedRegs<(add RA, S0, S1, FS0, FS1)>;
+diff --git a/llvm/lib/Target/Toy/ToyFrameLowering.cpp b/llvm/lib/Target/Toy/ToyFrameLowering.cpp
+new file mode 100644
+index 000000000000..fc0a47c667bd
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyFrameLowering.cpp
+@@ -0,0 +1,27 @@
++//===-- ToyFrameLowering.cpp - Frame lowering for Toy -------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyFrameLowering.h"
++#include "ToyRegisterInfo.h"
++#include "llvm/CodeGen/MachineBasicBlock.h"
++#include "llvm/CodeGen/MachineModuleInfo.h"
++#include "llvm/Support/Alignment.h"
++
++using namespace llvm;
++
++ToyFrameLowering::ToyFrameLowering()
++    : TargetFrameLowering(TargetFrameLowering::StackGrowsDown, Align(8), 0,
++                          Align(8), false /* StackRealignable */) {}
++
++void ToyFrameLowering::emitPrologue(MachineFunction &MF,
++                                    MachineBasicBlock &MBB) const {}
++
++void ToyFrameLowering::emitEpilogue(MachineFunction &MF,
++                                    MachineBasicBlock &MBB) const {}
++
++bool ToyFrameLowering::hasFP(const MachineFunction &MF) const { return false; }
+diff --git a/llvm/lib/Target/Toy/ToyFrameLowering.h b/llvm/lib/Target/Toy/ToyFrameLowering.h
+new file mode 100644
+index 000000000000..7b11b7dad071
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyFrameLowering.h
+@@ -0,0 +1,29 @@
++//===-- ToyFrameLowering.h - Frame lowering for Toy -----------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOYFRAMELOWERING_H
++#define LLVM_LIB_TARGET_TOY_TOYFRAMELOWERING_H
++
++#include "llvm/ADT/IndexedMap.h"
++#include "llvm/CodeGen/TargetFrameLowering.h"
++
++namespace llvm {
++class ToyTargetMachine;
++class ToySubtarget;
++
++class ToyFrameLowering : public TargetFrameLowering {
++public:
++  ToyFrameLowering();
++
++  void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
++  void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
++  bool hasFP(const MachineFunction &MF) const override;
++};
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOYFRAMELOWERING_H
+diff --git a/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
+new file mode 100644
+index 000000000000..c94596035fa6
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyISelDAGToDAG.cpp
+@@ -0,0 +1,76 @@
++//===-- ToyISelDAGToDAG.cpp - A dag to dag inst
++// selector for Toy --------===//
++//
++// Part of the LLVM Project, under the Apache License
++// v2.0 with LLVM Exceptions. See
++// https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH
++// LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file defines an instruction selector for the
++// Toy target.
++//
++//===----------------------------------------------------------------------===//
++
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "Toy.h"
++#include "ToyTargetMachine.h"
++#include "llvm/CodeGen/SelectionDAGISel.h"
++#include "llvm/Pass.h"
++#include "llvm/Support/Debug.h"
++
++using namespace llvm;
++
++#define DEBUG_TYPE "Toy-isel"
++#define PASS_NAME "Toy DAG->DAG Pattern Instruction Selection"
++
++namespace {
++
++class ToyDAGToDAGISel : public SelectionDAGISel {
++public:
++  static char ID;
++
++  ToyDAGToDAGISel(ToyTargetMachine &TM, CodeGenOptLevel OptLevel)
++      : SelectionDAGISel(TM, OptLevel) {}
++
++  // Override SelectionDAGISel.
++  void Select(SDNode *Node) override;
++
++// Include the pieces autogenerated from the target
++// description.
++#include "ToyGenDAGISel.inc"
++};
++
++class ToyDAGToDAGISelLegacy : public SelectionDAGISelLegacy {
++public:
++  static char ID;
++  explicit ToyDAGToDAGISelLegacy(ToyTargetMachine &tm, CodeGenOptLevel OptLevel)
++      : SelectionDAGISelLegacy(
++            ID, std::make_unique<ToyDAGToDAGISel>(tm, OptLevel)) {}
++};
++} // end anonymous namespace
++
++char ToyDAGToDAGISelLegacy::ID = 0;
++
++INITIALIZE_PASS(ToyDAGToDAGISelLegacy, DEBUG_TYPE, PASS_NAME, false, false)
++
++FunctionPass *llvm::createToyISelDag(ToyTargetMachine &TM,
++                                     CodeGenOptLevel OptLevel) {
++  return new ToyDAGToDAGISelLegacy(TM, OptLevel);
++}
++
++void ToyDAGToDAGISel::Select(SDNode *Node) {
++  // Instruction Selection not handled by the
++  // auto-generated tablegen selection should be handled
++  // here.
++
++  if (Node->isMachineOpcode()) {
++    Node->setNodeId(-1);
++    return;
++  }
++
++  // Select the default instruction.
++  SelectCode(Node);
++}
+diff --git a/llvm/lib/Target/Toy/ToyISelLowering.cpp b/llvm/lib/Target/Toy/ToyISelLowering.cpp
+new file mode 100644
+index 000000000000..def870af9f1e
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyISelLowering.cpp
+@@ -0,0 +1,333 @@
++//===-- ToyISelLowering.cpp - Toy DAG lowering implementation -----------===//
++//
++// Part of the LLVM Project, under the Apache License
++// v2.0 with LLVM Exceptions. See
++// https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH
++// LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file implements the ToyTargetLowering class.
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyISelLowering.h"
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "Toy.h"
++#include "ToySubtarget.h"
++#include "llvm/CodeGen/CallingConvLower.h"
++#include "llvm/CodeGen/MachineFrameInfo.h"
++#include "llvm/CodeGen/MachineRegisterInfo.h"
++#include "llvm/Support/Alignment.h"
++#include <deque>
++
++#define DEBUG_TYPE "toy-isel-lowering"
++
++using namespace llvm;
++
++ToyTargetLowering::ToyTargetLowering(const TargetMachine &TM,
++                                     ToySubtarget const &STI)
++    : TargetLowering(TM), Subtarget(STI) {
++  addRegisterClass(MVT::i32, &Toy::GPRRegClass);
++  addRegisterClass(MVT::f32, &Toy::FPRRegClass);
++  addRegisterClass(MVT::f64, &Toy::FPR64RegClass);
++
++  setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
++  setOperationAction(ISD::ConstantPool, MVT::i32, Custom);
++  setOperationAction(ISD::Constant, MVT::i32, Custom);
++
++  setOperationAction(ISD::BR_CC, MVT::i32, Expand);
++  setOperationAction(ISD::BR_CC, MVT::f32, Expand);
++  setOperationAction(ISD::BR_CC, MVT::f64, Expand);
++
++  setOperationAction(ISD::FMAXNUM, MVT::f32, Legal);
++
++  setTruncStoreAction(MVT::f64, MVT::f32, Expand);
++
++  setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f32, Expand);
++  setBooleanContents(ZeroOrOneBooleanContent);
++  computeRegisterProperties(STI.getRegisterInfo());
++}
++
++#include "ToyGenCallingConv.inc"
++
++SDValue ToyTargetLowering::LowerFormalArguments(
++    SDValue Chain, CallingConv::ID CallConv, bool IsVarArg,
++    SmallVectorImpl<ISD::InputArg> const &Ins, SDLoc const &DL,
++    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
++  MachineFunction &MF = DAG.getMachineFunction();
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++
++  SmallVector<CCValAssign, 16> ArgLocs;
++  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), ArgLocs,
++                 *DAG.getContext());
++
++  CCInfo.AnalyzeFormalArguments(Ins, CC_Toy);
++  for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
++    CCValAssign &VA = ArgLocs[i];
++    EVT ValVT = VA.getValVT();
++    if (VA.isRegLoc()) {
++      MVT LocVT = VA.getLocVT();
++      unsigned ArgReg = VA.getLocReg();
++      const TargetRegisterClass *RC = getRegClassFor(LocVT);
++
++      unsigned VReg = MF.getRegInfo().createVirtualRegister(RC);
++      MF.getRegInfo().addLiveIn(ArgReg, VReg);
++      SDValue ArgValue = DAG.getCopyFromReg(Chain, DL, VReg, LocVT);
++      InVals.push_back(ArgValue);
++    } else if (VA.isMemLoc()) {
++      MVT LocVT = VA.getLocVT();
++      EVT PtrVT =
++          MVT::getIntegerVT(DAG.getDataLayout().getPointerSizeInBits(0));
++      int FI = MFI.CreateFixedObject(ValVT.getStoreSize(), VA.getLocMemOffset(),
++                                     true);
++      SDValue FIN = DAG.getFrameIndex(FI, PtrVT);
++      SDValue Load = DAG.getLoad(
++          LocVT, DL, Chain, FIN,
++          MachinePointerInfo::getFixedStack(DAG.getMachineFunction(), FI));
++      InVals.push_back(Load);
++    }
++  }
++  return Chain;
++}
++
++SDValue
++ToyTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
++                               bool IsVarArg,
++                               SmallVectorImpl<ISD::OutputArg> const &Outs,
++                               SmallVectorImpl<SDValue> const &OutVals,
++                               SDLoc const &DL, SelectionDAG &DAG) const {
++  SmallVector<CCValAssign, 2> RVLocs;
++  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), RVLocs,
++                 *DAG.getContext());
++  CCInfo.AnalyzeReturn(Outs, CC_Toy);
++
++  SDValue Glue;
++  SmallVector<SDValue, 4> Ops(1, Chain);
++  for (unsigned i = 0, e = RVLocs.size(); i != e; ++i) {
++    CCValAssign &VA = RVLocs[i];
++    assert(VA.isRegLoc() && "Can only return in registers!");
++    unsigned RVReg = VA.getLocReg();
++    Chain = DAG.getCopyToReg(Chain, DL, RVReg, OutVals[i], Glue);
++    Glue = Chain.getValue(1);
++    Ops.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
++  }
++
++  Ops[0] = Chain;
++  if (Glue.getNode()) {
++    Ops.push_back(Glue);
++  }
++  return DAG.getNode(ToyISD::Ret, DL, MVT::Other, Ops);
++}
++
++SDValue ToyTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
++  switch (Op.getOpcode()) {
++  case ISD::GlobalAddress:
++    return lowerGlobalAddress(Op, DAG);
++  case ISD::ConstantPool:
++    return lowerConstantPool(Op, DAG);
++  case ISD::Constant:
++    return lowerConstant(Op, DAG);
++  }
++  return SDValue();
++}
++
++SDValue ToyTargetLowering::lowerGlobalAddress(SDValue Op,
++                                              SelectionDAG &DAG) const {
++  EVT Ty = Op.getValueType();
++  GlobalAddressSDNode *N = cast<GlobalAddressSDNode>(Op);
++  assert(N->getOffset() == 0 && "unexpected offset in global node");
++  int64_t Offset = N->getOffset();
++  // const GlobalValue *GV = N->getGlobal();
++
++  SDLoc DL(N);
++  SDValue AddrHi =
++      DAG.getTargetGlobalAddress(N->getGlobal(), DL, Ty, 0, ToyII::MO_HI);
++  SDValue AddrLo =
++      DAG.getTargetGlobalAddress(N->getGlobal(), DL, Ty, 0, ToyII::MO_LO);
++  // return DAG.getNode(ISD::ADD, DL, Ty, DAG.getNode(ToyISD::Hi, DL, Ty, Hi),
++  //                    DAG.getNode(ToyISD::Lo, DL, Ty, Lo));
++  SDValue MNHi = SDValue(DAG.getMachineNode(Toy::LUI, DL, Ty, AddrHi), 0);
++  SDValue Addr =
++      SDValue(DAG.getMachineNode(Toy::ADDI, DL, Ty, MNHi, AddrLo), 0);
++  if (Offset != 0) {
++    return DAG.getNode(ISD::ADD, DL, Ty, Addr, DAG.getConstant(Offset, DL, Ty));
++  }
++  return Addr;
++}
++
++SDValue ToyTargetLowering::lowerConstantPool(SDValue Op,
++                                             SelectionDAG &DAG) const {
++  EVT Ty = Op.getValueType();
++  ConstantPoolSDNode *N = cast<ConstantPoolSDNode>(Op);
++  SDLoc DL(N);
++  SDValue AddrHi = DAG.getTargetConstantPool(
++      N->getConstVal(), Ty, N->getAlign(), N->getOffset(), ToyII::MO_HI);
++  SDValue AddrLo = DAG.getTargetConstantPool(
++      N->getConstVal(), Ty, N->getAlign(), N->getOffset(), ToyII::MO_LO);
++  SDValue MNHi = SDValue(DAG.getMachineNode(Toy::LUI, DL, Ty, AddrHi), 0);
++  SDValue Addr =
++      SDValue(DAG.getMachineNode(Toy::ADDI, DL, Ty, MNHi, AddrLo), 0);
++
++  return Addr;
++}
++
++#define RISCV_CONST_HIGH_PART(VALUE) (((VALUE) + (1 << 11)) & 0xfffff000)
++#define RISCV_CONST_LOW_PART(VALUE) ((VALUE) - RISCV_CONST_HIGH_PART(VALUE))
++
++SDValue ToyTargetLowering::lowerConstant(SDValue Op, SelectionDAG &DAG) const {
++  SDLoc DL(Op);
++  EVT VT = Op.getValueType();
++
++  int32_t Imm = cast<ConstantSDNode>(Op)->getSExtValue();
++
++  if (isInt<12>(Imm)) {
++    SDValue SDImm = DAG.getTargetConstant(Imm, DL, VT);
++    SDValue Op =
++        SDValue(DAG.getMachineNode(Toy::ADDI, DL, VT,
++                                   DAG.getRegister(Toy::ZERO, VT), SDImm),
++                0);
++    return Op;
++  } else {
++    uint32_t Hi = RISCV_CONST_HIGH_PART(Imm);
++    uint32_t Lo = RISCV_CONST_LOW_PART(Imm);
++    SDValue SDImmHi = DAG.getTargetConstant(Hi >> 12, DL, VT);
++    SDValue SDImmLo = DAG.getTargetConstant(Lo, DL, VT);
++    SDValue LuiOp = SDValue(DAG.getMachineNode(Toy::LUI, DL, VT, SDImmHi), 0);
++    SDValue AddiOp =
++        SDValue(DAG.getMachineNode(Toy::ADDI, DL, VT, LuiOp, SDImmLo), 0);
++    return AddiOp;
++  }
++  return SDValue();
++}
++
++const char *ToyTargetLowering::getTargetNodeName(unsigned Opcode) const {
++  switch (Opcode) {
++#define OPCODE(Opc)                                                            \
++  case Opc:                                                                    \
++    return #Opc
++    OPCODE(ToyISD::Hi);
++    OPCODE(ToyISD::Lo);
++    OPCODE(ToyISD::Ret);
++    OPCODE(ToyISD::Call);
++#undef OPCODE
++  default:
++    return nullptr;
++  }
++}
++
++int max_offset = 0;
++SDValue ToyTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
++                                     SmallVectorImpl<SDValue> &InVals) const {
++  SelectionDAG &DAG = CLI.DAG;
++  SDLoc DL = CLI.DL;
++  SDValue Chain = CLI.Chain;
++  SDValue Callee = CLI.Callee;
++  CallingConv::ID CallConv = CLI.CallConv;
++  bool IsVarArg = CLI.IsVarArg;
++  // NOTE: Outs 是 call 需要传递的参数
++  SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
++  SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
++  SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
++
++  MachineFunction &MF = DAG.getMachineFunction();
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++
++  SmallVector<CCValAssign, 2> ArgLocs;
++  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), ArgLocs,
++                 *DAG.getContext());
++  CCInfo.AnalyzeCallOperands(Outs, CC_Toy);
++
++  std::deque<std::pair<unsigned, SDValue>> RegsToPass;
++
++  for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
++    CCValAssign &VA = ArgLocs[i];
++    if (VA.isRegLoc()) {
++      RegsToPass.push_back(std::make_pair(VA.getLocReg(), OutVals[i]));
++      // unsigned ArgReg = VA.getLocReg();
++      // Chain = DAG.getCopyToReg(Chain, DL, ArgReg, OutVals[i]);
++    } else if (VA.isMemLoc()) {
++      SDValue StackPtr = DAG.getCopyFromReg(Chain, DL, Toy::SP,
++                                            getPointerTy(DAG.getDataLayout()));
++      SDValue PtrOff =
++          DAG.getNode(ISD::ADD, DL, getPointerTy(DAG.getDataLayout()), StackPtr,
++                      DAG.getIntPtrConstant(VA.getLocMemOffset(), DL));
++      Chain = DAG.getStore(Chain, DL, OutVals[i], PtrOff, MachinePointerInfo());
++      MFI.setOffsetAdjustment(alignTo(VA.getLocMemOffset() + 4, 16));
++    }
++  }
++  // -------------------------------------------
++
++  if (GlobalAddressSDNode *N = dyn_cast<GlobalAddressSDNode>(Callee)) {
++    EVT Ty = getPointerTy(DAG.getDataLayout());
++    SDValue Hi =
++        DAG.getTargetGlobalAddress(N->getGlobal(), DL, Ty, 0, ToyII::MO_HI);
++    SDValue Lo =
++        DAG.getTargetGlobalAddress(N->getGlobal(), DL, Ty, 0, ToyII::MO_LO);
++    SDValue MNHi = SDValue(DAG.getMachineNode(Toy::LUI, DL, Ty, Hi), 0);
++
++    Callee = SDValue(DAG.getMachineNode(Toy::ADDI, DL, Ty, MNHi, Lo), 0);
++  } else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
++    const char *Sym = S->getSymbol();
++    EVT Ty = getPointerTy(DAG.getDataLayout());
++    SDValue Hi = DAG.getTargetExternalSymbol(
++        Sym, getPointerTy(DAG.getDataLayout()), ToyII::MO_HI);
++
++    SDValue Lo = DAG.getTargetExternalSymbol(
++        Sym, getPointerTy(DAG.getDataLayout()), ToyII::MO_LO);
++
++    SDValue MNHi = SDValue(DAG.getMachineNode(Toy::LUI, DL, Ty, Hi), 0);
++
++    Callee = SDValue(DAG.getMachineNode(Toy::ADDI, DL, Ty, MNHi, Lo), 0);
++  }
++
++  // GlobalAddressSDNode *N = dyn_cast<GlobalAddressSDNode>(Callee);
++
++  SmallVector<SDValue, 8> Ops(1, Chain);
++  Ops.push_back(Callee);
++
++  SDValue Glue;
++  for (unsigned i = 0, e = RegsToPass.size(); i != e; ++i) {
++    Chain = CLI.DAG.getCopyToReg(Chain, CLI.DL, RegsToPass[i].first,
++                                 RegsToPass[i].second, Glue);
++    Glue = Chain.getValue(1);
++    Ops.push_back(CLI.DAG.getRegister(RegsToPass[i].first,
++                                      RegsToPass[i].second.getValueType()));
++  }
++
++  const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
++  const uint32_t *Mask =
++      TRI->getCallPreservedMask(CLI.DAG.getMachineFunction(), CLI.CallConv);
++  Ops.push_back(CLI.DAG.getRegisterMask(Mask));
++  if (Glue.getNode()) {
++    Ops.push_back(Glue);
++  }
++  SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
++  Chain = DAG.getNode(ToyISD::Call, DL, NodeTys, Ops);
++
++  // -------------------------------------------
++  {
++    SDValue Glue = Chain.getValue(1);
++    SmallVector<CCValAssign, 2> RVLocs;
++    CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), RVLocs,
++                   *DAG.getContext());
++    CCInfo.AnalyzeCallResult(Ins, CC_Toy);
++    for (unsigned i = 0, e = RVLocs.size(); i != e; ++i) {
++      CCValAssign &VA = RVLocs[i];
++      assert(VA.isRegLoc());
++      unsigned RVReg = VA.getLocReg();
++      SDValue Val =
++          DAG.getCopyFromReg(Chain, DL, RVReg, RVLocs[i].getLocVT(), Glue);
++      Chain = Val.getValue(1);
++      Glue = Val.getValue(2);
++      InVals.push_back(Val);
++    }
++  }
++  return Chain;
++}
++
++bool ToyTargetLowering::isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
++                                                   EVT VT) const {
++  return true;
++}
+diff --git a/llvm/lib/Target/Toy/ToyISelLowering.h b/llvm/lib/Target/Toy/ToyISelLowering.h
+new file mode 100644
+index 000000000000..df10d07cc662
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyISelLowering.h
+@@ -0,0 +1,64 @@
++//===-- ToyISelLowering.h - Toy DAG lowering interface --------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file defines the interfaces that Toy uses to lower LLVM code into a
++// selection DAG.
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOYISELLOWERING_H
++#define LLVM_LIB_TARGET_TOY_TOYISELLOWERING_H
++
++#include <llvm/CodeGen/SelectionDAG.h>
++#include <llvm/CodeGen/TargetLowering.h>
++
++namespace llvm {
++
++namespace ToyISD {
++enum NodeType {
++  FIRST_NUMBER = ISD::BUILTIN_OP_END,
++  Hi,
++  Lo,
++  Ret,
++  Call,
++};
++}
++
++class ToySubtarget;
++class ToyTargetLowering : public TargetLowering {
++private:
++  SDValue lowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
++  SDValue lowerConstantPool(SDValue Op, SelectionDAG &DAG) const;
++  SDValue lowerConstant(SDValue Op, SelectionDAG &DAG) const;
++  const ToySubtarget &Subtarget;
++
++public:
++  ToyTargetLowering(const TargetMachine &TM, ToySubtarget const &STI);
++
++  SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
++                               bool IsVarArg,
++                               SmallVectorImpl<ISD::InputArg> const &Ins,
++                               SDLoc const &dl, SelectionDAG &DAG,
++                               SmallVectorImpl<SDValue> &InVals) const override;
++
++  SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool IsVarArg,
++                      SmallVectorImpl<ISD::OutputArg> const &Outs,
++                      SmallVectorImpl<SDValue> const &OutVals, SDLoc const &dl,
++                      SelectionDAG &DAG) const override;
++  SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
++  const char *getTargetNodeName(unsigned Opcode) const override;
++
++  SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
++                    SmallVectorImpl<SDValue> &InVals) const override;
++
++  bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
++                                  EVT VT) const override;
++};
++} // namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOYISELLOWERING_H
+diff --git a/llvm/lib/Target/Toy/ToyInstrFormats.td b/llvm/lib/Target/Toy/ToyInstrFormats.td
+index 538acad47a9b..a30f515512a6 100644
+--- a/llvm/lib/Target/Toy/ToyInstrFormats.td
++++ b/llvm/lib/Target/Toy/ToyInstrFormats.td
+@@ -28,16 +28,16 @@ class ToyInst<dag outs, dag ins, string asm, list<dag> pattern>: Instruction
+   let Size = 4; // this will autogen the DecoderTableToy32
+ 
+   let OutOperandList = outs;
+-  let InOperandList = ins;
+-  let AsmString = asm;
+-  let Pattern = pattern;
++  let InOperandList  = ins;
++  let AsmString      = asm;
++  let Pattern        = pattern;
+ 
+   let DecoderNamespace = "Toy";
+ 
+   field bits<32> Inst;
+-  bits<32> SoftFail = 0;
+-  bits<7> Opcode = 0;
+-  let Inst{6-0} = Opcode;
++  bits<32> SoftFail  = 0;
++  bits<7> Opcode     = 0;
++  let Inst{6-0}      = Opcode;
+ }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
+@@ -56,7 +56,7 @@ class InstI<bits<7> opcode, bits<3> funct3,
+   let Inst{31-20} = imm;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+-  let Inst{11-7} = rd;
++  let Inst{11-7}  = rd;
+ }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
+@@ -77,7 +77,7 @@ class InstR<bits<7> opcode, bits<7> funct7,
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+-  let Inst{11-7} = rd;
++  let Inst{11-7}  = rd;
+ }
+ 
+ class InstR4<bits<7> opcode, bits<2> funct2, bits<3> funct3, dag outs,
+@@ -94,7 +94,7 @@ class InstR4<bits<7> opcode, bits<2> funct2, bits<3> funct3, dag outs,
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+-  let Inst{11-7} = rd;
++  let Inst{11-7}  = rd;
+ }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
+@@ -104,13 +104,13 @@ class InstR4<bits<7> opcode, bits<2> funct2, bits<3> funct3, dag outs,
+ class InstU<bits<7> opcode, dag outs, 
+             dag ins, string asm, 
+             list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
+-      let Opcode = opcode;
++  let Opcode = opcode;
+ 
+-      bits<5> rd;
+-      bits<20> imm;
++  bits<5> rd;
++  bits<20> imm;
+ 
+-      let Inst{31-12} = imm;
+-      let Inst{11-7} = rd;
++  let Inst{31-12} = imm;
++  let Inst{11-7}  = rd;
+ }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
+@@ -125,13 +125,13 @@ class InstB<bits<7> opcode, bits<3> funct3,
+   bits<5> rs1;
+   bits<12> imm12;
+ 
+-  let Inst{31} = imm12{11};
++  let Inst{31}    = imm12{11};
+   let Inst{30-25} = imm12{9-4};
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+-  let Inst{11-8} = imm12{3-0};
+-  let Inst{7} = imm12{10};
++  let Inst{11-8}  = imm12{3-0};
++  let Inst{7}     = imm12{10};
+ }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
+@@ -149,7 +149,7 @@ class InstS<bits<7> opcode, bits<3> funct3,
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+-  let Inst{11-7} = imm{4-0};
++  let Inst{11-7}  = imm{4-0};
+ }
+ 
+ //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
+@@ -159,19 +159,19 @@ class InstS<bits<7> opcode, bits<3> funct3,
+ class InstJ<bits<7> opcode, dag outs, dag ins, 
+             string asm, 
+             list<dag> pattern>: ToyInst<outs, ins, asm, pattern>{
+-      let Opcode = opcode;
+-      bits<20> imm20;
+-      bits<5> rd;
+-
+-      let Inst{31} = imm20{19};
+-      let Inst{30-21} = imm20{9-0};
+-      let Inst{20} = imm20{10};
+-      let Inst{19-12} = imm20{18-11};
+-      let Inst{11-7} = rd;
++  let Opcode = opcode;
++  bits<20> imm20;
++  bits<5> rd;
++
++  let Inst{31}    = imm20{19};
++  let Inst{30-21} = imm20{9-0};
++  let Inst{20}    = imm20{10};
++  let Inst{19-12} = imm20{18-11};
++  let Inst{11-7}  = rd;
+ }
+ 
+ class ToyPseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
+       ToyInst<outs, ins, asmstr, pattern> {
+-  let isCodeGenOnly = 1;
+-  let isPseudo = 1;
++  let isCodeGenOnly   = 1;
++  let isPseudo        = 1;
+ }
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.cpp b/llvm/lib/Target/Toy/ToyInstrInfo.cpp
+new file mode 100644
+index 000000000000..bbbb3e012803
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.cpp
+@@ -0,0 +1,36 @@
++//===-- ToyInstrInfo.cpp - Toy instruction information ------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file contains the Toy implementation of the TargetInstrInfo class.
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyInstrInfo.h"
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "ToySubtarget.h"
++#include "llvm/CodeGen/LiveIntervals.h"
++#include "llvm/CodeGen/LiveVariables.h"
++#include "llvm/CodeGen/MachineBasicBlock.h"
++#include "llvm/CodeGen/MachineFrameInfo.h"
++#include "llvm/CodeGen/MachineFunction.h"
++#include "llvm/CodeGen/MachineInstr.h"
++#include "llvm/CodeGen/MachineOperand.h"
++#include "llvm/CodeGen/TargetSubtargetInfo.h"
++
++using namespace llvm;
++
++#define GET_INSTRINFO_CTOR_DTOR
++#define GET_INSTRMAP_INFO
++#include "ToyGenInstrInfo.inc"
++
++#define DEBUG_TYPE "Toy-ii"
++
++// Pin the vtable to this file.
++void ToyInstrInfo::anchor() {}
++
++ToyInstrInfo::ToyInstrInfo(ToySubtarget &STI) : ToyGenInstrInfo(), STI(STI) {}
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.h b/llvm/lib/Target/Toy/ToyInstrInfo.h
+new file mode 100644
+index 000000000000..89094cb9675e
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.h
+@@ -0,0 +1,39 @@
++//===-- ToyInstrInfo.h - Toy instruction information
++//----------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License
++// v2.0 with LLVM Exceptions. See
++// https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH
++// LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file contains the Toy implementation of the
++// TargetInstrInfo class.
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOYINSTRINFO_H
++#define LLVM_LIB_TARGET_TOY_TOYINSTRINFO_H
++
++#include "llvm/CodeGen/TargetInstrInfo.h"
++
++#define GET_INSTRINFO_HEADER
++#include "ToyGenInstrInfo.inc"
++
++namespace llvm {
++
++class ToySubtarget;
++
++class ToyInstrInfo : public ToyGenInstrInfo {
++  [[maybe_unused]] ToySubtarget &STI;
++  virtual void anchor();
++
++public:
++  explicit ToyInstrInfo(ToySubtarget &STI);
++};
++
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOYINSTRINFO_H
+diff --git a/llvm/lib/Target/Toy/ToyInstrInfo.td b/llvm/lib/Target/Toy/ToyInstrInfo.td
+index a0e3b75c66be..d06cb338a639 100644
+--- a/llvm/lib/Target/Toy/ToyInstrInfo.td
++++ b/llvm/lib/Target/Toy/ToyInstrInfo.td
+@@ -9,6 +9,35 @@
+ def imm12 : Operand<i32>, ImmLeaf<i32, [{return isInt<12>(Imm);}]>;
+ def imm20 : Operand<i32>, ImmLeaf<i32, [{return isInt<20>(Imm);}]>;
+ 
++def brtarget : Operand<OtherVT>;
++
++def ToyRET : SDNode<"ToyISD::Ret", SDTNone, [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
++
++def J : InstJ<0b1101111, (outs),(ins brtarget:$imm20),
++           "jal\tzero, ${imm20}", [(br bb:$imm20)]> {
++  // NOTE: isTerminator is required to generator label of the fallthrough bb
++  let isTerminator = 1;
++  let rd = 0;
++}
++
++def JALR : InstI<0b1100111, 0b000, (outs GPR:$rd), (ins GPR:$rs1, imm12:$imm),
++      "jalr\t$rd, $rs1, $imm", []>;
++
++def RET : ToyPseudo<(outs),(ins),"",[(ToyRET)]>, PseudoInstExpansion<(JALR ZERO, RA, 0)> {
++  let isReturn = 1;
++  let isTerminator=1;
++  let isPseudo = 1;
++}
++
++def SDT_Call : SDTypeProfile<0, 1, [SDTCisVT<0, iPTR>]>;
++def ToyCall  : SDNode<"ToyISD::Call", SDT_Call, [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue, SDNPVariadic]>;
++def CALL     : ToyPseudo<(outs),(ins GPR:$rs1),"",[(ToyCall GPR:$rs1)]>, PseudoInstExpansion<(JALR RA, GPR:$rs1, 0)> {
++  let isCall = 1;
++}
++
++def LUI : InstU<0b0110111, (outs GPR:$rd), (ins imm20:$imm),
++                "lui $rd, $imm", []>;
++
+ class ArithLogicI <bits<7> opcode, bits<3> funct3, string inst, SDNode node>:
+       InstI<opcode, funct3, (outs GPR:$rd), (ins GPR:$rs1, imm12:$imm),
+       !strconcat(inst, "\t$rd, $rs1, $imm"),
+@@ -18,3 +47,19 @@ def ADDI : ArithLogicI<0b0010011, 0b000, "addi", add>;
+ def ANDI : ArithLogicI<0b0010011, 0b111, "andi", and>;
+ def ORI  : ArithLogicI<0b0010011, 0b110, "ori",  or>;
+ def XORI : ArithLogicI<0b0010011, 0b100, "xori", xor>;
++
++
++class ArithLogicR <bits<7> funct7, bits<3> funct3, string inst, SDNode node>:
++      InstR<0b0110011, funct7, funct3, (outs GPR:$rd), (ins GPR:$rs1, GPR:$rs2),
++      !strconcat(inst, "\t$rd, $rs1, $rs2"),
++      [(set GPR:$rd, (node GPR:$rs1, GPR:$rs2))]>;
++
++def ADD  : ArithLogicR<0b0000000, 0b000, "add",  add>;
++def SUB  : ArithLogicR<0b0100000, 0b000, "sub",  sub>;
++def MUL  : ArithLogicR<0b0000001, 0b000, "mul",  mul>;
++def MULH : ArithLogicR<0b0000001, 0b001, "mulh", mulhs>;
++def DIV  : ArithLogicR<0b0000001, 0b100, "div",  sdiv>;
++def REM  : ArithLogicR<0b0000001, 0b110, "rem",  srem>;
++def AND  : ArithLogicR<0b0000000, 0b111, "and",  and>;
++def OR   : ArithLogicR<0b0000000, 0b110, "or",   or>;
++def XOR  : ArithLogicR<0b0000000, 0b100, "xor",  xor>;
+diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.cpp b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+new file mode 100644
+index 000000000000..3fbc074f80b3
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyMCInstLower.cpp
+@@ -0,0 +1,38 @@
++//===-- ToyMCInstLower.cpp - Lower MachineInstr to MCInst ----------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyMCInstLower.h"
++#include "llvm/CodeGen/AsmPrinter.h"
++#include "llvm/CodeGen/MachineInstr.h"
++#include "llvm/CodeGen/MachineOperand.h"
++#include "llvm/MC/MCInst.h"
++#include "llvm/MC/MCStreamer.h"
++
++using namespace llvm;
++
++MCOperand ToyMCInstLower::lowerOperand(const MachineOperand &MO) const {
++  switch (MO.getType()) {
++  case MachineOperand::MO_Register:
++    return MCOperand::createReg(MO.getReg());
++
++  case MachineOperand::MO_Immediate:
++    return MCOperand::createImm(MO.getImm());
++
++  default:
++    llvm_unreachable("Operand type not handled");
++  }
++}
++
++void ToyMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
++  OutMI.setOpcode(MI->getOpcode());
++  for (auto &MO : MI->operands()) {
++    // Ignore all implicit register operands.
++    if (!MO.isReg() || !MO.isImplicit())
++      OutMI.addOperand(lowerOperand(MO));
++  }
++}
+diff --git a/llvm/lib/Target/Toy/ToyMCInstLower.h b/llvm/lib/Target/Toy/ToyMCInstLower.h
+new file mode 100644
+index 000000000000..062a59bb2e50
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyMCInstLower.h
+@@ -0,0 +1,32 @@
++//===-- ToyMCInstLower.h - Lower MachineInstr to MCInst -------*- C++ -*--===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOYMCINSTLOWER_H
++#define LLVM_LIB_TARGET_TOY_TOYMCINSTLOWER_H
++
++#include "llvm/Support/Compiler.h"
++
++namespace llvm {
++class AsmPrinter;
++class MCInst;
++class MCOperand;
++class MachineInstr;
++class MachineOperand;
++class Mangler;
++
++class LLVM_LIBRARY_VISIBILITY ToyMCInstLower {
++public:
++  // Lower MachineInstr MI to MCInst OutMI.
++  void lower(const MachineInstr *MI, MCInst &OutMI) const;
++
++  // Return an MCOperand for MO.
++  MCOperand lowerOperand(const MachineOperand &MO) const;
++};
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOYMCINSTLOWER_H
+diff --git a/llvm/lib/Target/Toy/ToyRegisterInfo.cpp b/llvm/lib/Target/Toy/ToyRegisterInfo.cpp
+new file mode 100644
+index 000000000000..1d7269d6ae2c
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyRegisterInfo.cpp
+@@ -0,0 +1,105 @@
++//===-- ToyRegisterInfo.cpp - Toy Register Information
++//------------------===//
++//
++// Part of the LLVM Project, under the Apache License
++// v2.0 with LLVM Exceptions. See
++// https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH
++// LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file contains the Toy implementation of the
++// TargetRegisterInfo class.
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToyRegisterInfo.h"
++#include "MCTargetDesc/ToyMCTargetDesc.h"
++#include "ToyFrameLowering.h"
++#include "llvm/ADT/BitVector.h"
++#include "llvm/CodeGen/MachineFrameInfo.h"
++#include "llvm/CodeGen/MachineFunction.h"
++#include "llvm/CodeGen/Register.h"
++#include "llvm/CodeGen/TargetInstrInfo.h"
++#include "llvm/MC/MCRegister.h"
++
++#define DEBUG_TYPE "toy-register-info"
++
++using namespace llvm;
++
++#define GET_REGINFO_TARGET_DESC
++#include "ToyGenRegisterInfo.inc"
++
++ToyRegisterInfo::ToyRegisterInfo(ToySubtarget const &STI, unsigned HwMode)
++    : ToyGenRegisterInfo(0, 0, 0, 0, HwMode) {}
++
++const MCPhysReg *
++ToyRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
++  return CSR_Toy_SaveList;
++}
++
++const uint32_t *ToyRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
++                                                      CallingConv::ID) const {
++  return CSR_Toy_RegMask;
++}
++
++BitVector ToyRegisterInfo::getReservedRegs(MachineFunction const &MF) const {
++  constexpr uint16_t ReservedCPURegs[] = {Toy::ZERO, Toy::RA, Toy::SP};
++  BitVector Reserved(getNumRegs());
++  for (auto const reg : ReservedCPURegs) {
++    Reserved.set(reg);
++  }
++  return Reserved;
++}
++
++bool ToyRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
++                                          int SPAdj, unsigned FIOperandNum,
++                                          RegScavenger *RS) const {
++
++  // 假设我们有以下 LLVM IR 代码，其中包含帧索引，这段代码表示一个简单的函数，
++  // 该函数获取一个整数参数并返回它的两倍。帧索引用于访问函数的局部变量或参数：
++  //
++  // ```llvm
++  // define i32 @doubleValue(i32 %x) {
++  // entry:
++  //   %x.addr = alloca i32, align 4
++  //   store i32 %x, i32* %x.addr, align 4
++  //   %0 = load i32, i32* %x.addr, align 4
++  //   %mul = mul nsw i32 %0, 2
++  //   ret i32 %mul
++  // }
++  // ```
++  // 在机器代码生成阶段，LLVM 需要将 %x.addr
++  // 这样的帧索引转换为具体的寄存器和偏移。 这时 eliminateFrameIndex
++  // 函数起作用，它将帧索引（比如 %x.addr）替换为栈指针（SP）加上一个偏移。
++  // 例如，如果 %x.addr 在栈上的位置是从栈指针向下偏移 4
++  // 个字节的位置，那么在机器指令中， 访问 %x.addr 的操作将被转换为对寄存器 SP
++  // 加上偏移 4 的操作。 这样，原本的 IR
++  // 指令中的帧索引就被转换成了具体的机器指令中使用的栈指针寻址方式。
++  // 通过这种方式，eliminateFrameIndex
++  // 函数确保生成的机器代码可以正确地访问栈上的数据，同时也优化了代码，避免了不必要的帧索引计算。
++
++  MachineInstr &MI = *II;
++  LLVM_DEBUG(errs() << MI);
++  unsigned int i = 0;
++  while (!MI.getOperand(i).isFI()) {
++    ++i;
++    assert(i < MI.getNumOperands());
++  }
++  int FI = MI.getOperand(i).getIndex();
++  MachineFunction &MF = *MI.getParent()->getParent();
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++  int64_t offset = MFI.getObjectOffset(FI);
++  uint64_t stack_size = MFI.getStackSize() + MFI.getOffsetAdjustment();
++  offset += (int64_t)stack_size;
++  offset += MI.getOperand(i + 1).getImm();
++  MI.getOperand(i).ChangeToRegister(Toy::SP, false);
++  MI.getOperand(i + 1).ChangeToImmediate(offset);
++
++  return true;
++}
++
++Register ToyRegisterInfo::getFrameRegister(MachineFunction const &MF) const {
++  return Toy::SP;
++}
+diff --git a/llvm/lib/Target/Toy/ToyRegisterInfo.h b/llvm/lib/Target/Toy/ToyRegisterInfo.h
+new file mode 100644
+index 000000000000..6e5d2fc591d6
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyRegisterInfo.h
+@@ -0,0 +1,43 @@
++//===-- ToyRegisterInfo.h - Toy Register Information Impl -------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License
++// v2.0 with LLVM Exceptions. See
++// https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH
++// LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file contains the Toy implementation of the
++// TargetRegisterInfo class.
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOYREGISTERINFO_H
++#define LLVM_LIB_TARGET_TOY_TOYREGISTERINFO_H
++
++#include "llvm/CodeGen/TargetRegisterInfo.h"
++
++#define GET_REGINFO_HEADER
++#include "ToyGenRegisterInfo.inc"
++
++namespace llvm {
++
++class ToySubtarget;
++
++class ToyRegisterInfo : public ToyGenRegisterInfo {
++public:
++  ToyRegisterInfo(ToySubtarget const &STI, unsigned HwMode);
++  MCPhysReg const *getCalleeSavedRegs(MachineFunction const *MF) const override;
++  uint32_t const *getCallPreservedMask(MachineFunction const &MF,
++                                       CallingConv::ID) const override;
++  BitVector getReservedRegs(MachineFunction const &MF) const override;
++  bool eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
++                           unsigned FIOperandNum,
++                           RegScavenger *RS = nullptr) const override;
++  Register getFrameRegister(MachineFunction const &MF) const override;
++};
++
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOYREGISTERINFO_H
+diff --git a/llvm/lib/Target/Toy/ToySubtarget.cpp b/llvm/lib/Target/Toy/ToySubtarget.cpp
+new file mode 100644
+index 000000000000..4ca407a9aa0e
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToySubtarget.cpp
+@@ -0,0 +1,32 @@
++//===-- ToySubtarget.cpp - Toy Subtarget Information ----------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file implements the Toy specific subclass of TargetSubtargetInfo.
++//
++//===----------------------------------------------------------------------===//
++
++#include "ToySubtarget.h"
++#include "ToyTargetMachine.h"
++#include "llvm/MC/TargetRegistry.h"
++#include "llvm/TargetParser/Triple.h"
++#include <string>
++
++using namespace llvm;
++
++#define DEBUG_TYPE "Toy-subtarget"
++
++#define GET_SUBTARGETINFO_TARGET_DESC
++#define GET_SUBTARGETINFO_CTOR
++#include "ToyGenSubtargetInfo.inc"
++
++void ToySubtarget::anchor() {}
++
++ToySubtarget::ToySubtarget(const Triple &TT, const std::string &CPU,
++                           const std::string &FS, const TargetMachine &TM)
++    : ToyGenSubtargetInfo(TT, CPU, /*TuneCPU*/ CPU, FS), InstrInfo(*this),
++      TLInfo(TM, *this), FrameLowering(), RegisterInfo(*this, getHwMode()) {}
+diff --git a/llvm/lib/Target/Toy/ToySubtarget.h b/llvm/lib/Target/Toy/ToySubtarget.h
+new file mode 100644
+index 000000000000..cb0c3ff213c5
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToySubtarget.h
+@@ -0,0 +1,67 @@
++//===-- ToySubtarget.h - Define Subtarget for Toy -------------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file declares the Toy specific subclass of TargetSubtargetInfo.
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOYSUBTARGET_H
++#define LLVM_LIB_TARGET_TOY_TOYSUBTARGET_H
++
++#include "ToyFrameLowering.h"
++#include "ToyISelLowering.h"
++#include "ToyInstrInfo.h"
++#include "ToyRegisterInfo.h"
++#include "llvm/CodeGen/TargetFrameLowering.h"
++#include "llvm/CodeGen/TargetSubtargetInfo.h"
++#include "llvm/IR/DataLayout.h"
++#include <string>
++
++#define GET_SUBTARGETINFO_HEADER
++#include "ToyGenSubtargetInfo.inc"
++
++namespace llvm {
++class StringRef;
++class TargetMachine;
++
++class ToySubtarget : public ToyGenSubtargetInfo {
++  virtual void anchor();
++
++  ToyInstrInfo InstrInfo;
++  ToyTargetLowering TLInfo;
++  ToyFrameLowering FrameLowering;
++  ToyRegisterInfo RegisterInfo;
++
++public:
++  ToySubtarget(const Triple &TT, const std::string &CPU, const std::string &FS,
++               const TargetMachine &TM);
++
++// Getters for SubtargetFeatures defined in tablegen
++#define GET_SUBTARGETINFO_MACRO(ATTRIBUTE, DEFAULT, GETTER)                    \
++  bool GETTER() const { return ATTRIBUTE; }
++
++#include "ToyGenSubtargetInfo.inc"
++
++  // Automatically generated by tblgen.
++  void ParseSubtargetFeatures(StringRef CPU, StringRef TuneCPU, StringRef FS);
++
++  const TargetFrameLowering *getFrameLowering() const override {
++    return &FrameLowering;
++  }
++  const ToyInstrInfo *getInstrInfo() const override { return &InstrInfo; }
++  const ToyRegisterInfo *getRegisterInfo() const override {
++    return &RegisterInfo;
++  }
++  const ToyTargetLowering *getTargetLowering() const override {
++    return &TLInfo;
++  }
++};
++
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOYSUBTARGET_H
+diff --git a/llvm/lib/Target/Toy/ToyTargetMachine.cpp b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
+index d9ac61731702..61936bd35b20 100644
+--- a/llvm/lib/Target/Toy/ToyTargetMachine.cpp
++++ b/llvm/lib/Target/Toy/ToyTargetMachine.cpp
+@@ -9,9 +9,117 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
++#include "ToyTargetMachine.h"
+ #include "TargetInfo/ToyTargetInfo.h"
++#include "Toy.h"
++#include "llvm/CodeGen/Passes.h"
++#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
++#include "llvm/CodeGen/TargetPassConfig.h"
++#include "llvm/IR/LegacyPassManager.h"
+ #include "llvm/MC/TargetRegistry.h"
+ 
++using namespace llvm;
++
+ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeToyTarget() {
+-  // TODO Register the target.
++  // Register the target.
++  RegisterTargetMachine<ToyTargetMachine> X(getTheToyTarget());
++  auto &PR = *PassRegistry::getPassRegistry();
++  initializeToyDAGToDAGISelLegacyPass(PR);
++}
++
++namespace {
++// TODO: Check.
++std::string computeDataLayout(const Triple &TT, StringRef CPU, StringRef FS) {
++  std::string Ret;
++
++  // Big endian.
++  Ret += "e";
++
++  // Data mangling.
++  Ret += DataLayout::getManglingComponent(TT);
++
++  // Pointers are 32 bit.
++  Ret += "-p:32:32";
++
++  // All scalar types are naturally aligned.
++  Ret += "-i8:8:32-i16:16:32-i64:64";
++
++  // Floats and doubles are also naturally aligned.
++  // Ret += "-f32:32:32-f64:64:64";
++
++  // We prefer 16 bits of aligned for all globals; see
++  // above.
++  // Ret += "-a:8:16";
++
++  // Integer registers are 32bits.
++  Ret += "-n32";
++
++  Ret += "-S128";
++
++  return Ret;
++}
++} // namespace
++
++/// Create an Toy architecture model.
++ToyTargetMachine::ToyTargetMachine(const Target &T, const Triple &TT,
++                                   StringRef CPU, StringRef FS,
++                                   const TargetOptions &Options,
++                                   std::optional<Reloc::Model> RM,
++                                   std::optional<CodeModel::Model> CM,
++                                   CodeGenOptLevel OL, bool JIT)
++    : LLVMTargetMachine(T, computeDataLayout(TT, CPU, FS), TT, CPU, FS, Options,
++                        !RM ? Reloc::Static : *RM,
++                        getEffectiveCodeModel(CM, CodeModel::Medium), OL),
++      TLOF(std::make_unique<TargetLoweringObjectFileELF>()) {
++  initAsmInfo();
+ }
++
++ToyTargetMachine::~ToyTargetMachine() {}
++
++const ToySubtarget *
++ToyTargetMachine::getSubtargetImpl(const Function &F) const {
++  Attribute CPUAttr = F.getFnAttribute("target-cpu");
++  Attribute FSAttr = F.getFnAttribute("target-features");
++
++  std::string CPU = !CPUAttr.hasAttribute(Attribute::None)
++                        ? CPUAttr.getValueAsString().str()
++                        : TargetCPU;
++  std::string FS = !FSAttr.hasAttribute(Attribute::None)
++                       ? FSAttr.getValueAsString().str()
++                       : TargetFS;
++
++  auto &I = SubtargetMap[CPU + FS];
++  if (!I) {
++    // This needs to be done before we create a new
++    // subtarget since any creation will depend on the
++    // TM and the code generation flags on the function
++    // that reside in TargetOptions.
++    resetTargetOptions(F);
++    I = std::make_unique<ToySubtarget>(TargetTriple, CPU, FS, *this);
++  }
++
++  return I.get();
++}
++
++namespace {
++/// Toy Code Generator Pass Configuration Options.
++class ToyPassConfig : public TargetPassConfig {
++public:
++  ToyPassConfig(ToyTargetMachine &TM, PassManagerBase &PM)
++      : TargetPassConfig(TM, PM) {}
++
++  bool addInstSelector() override;
++  void addPreEmitPass() override;
++};
++} // namespace
++
++TargetPassConfig *ToyTargetMachine::createPassConfig(PassManagerBase &PM) {
++  return new ToyPassConfig(*this, PM);
++}
++
++bool ToyPassConfig::addInstSelector() {
++  addPass(createToyISelDag(getTM<ToyTargetMachine>(), getOptLevel()));
++  return false;
++}
++
++void ToyPassConfig::addPreEmitPass() {}
+diff --git a/llvm/lib/Target/Toy/ToyTargetMachine.h b/llvm/lib/Target/Toy/ToyTargetMachine.h
+new file mode 100644
+index 000000000000..1b41b0224a45
+--- /dev/null
++++ b/llvm/lib/Target/Toy/ToyTargetMachine.h
+@@ -0,0 +1,44 @@
++//===-- ToyTargetMachine.h - Define TargetMachine for Toy ------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file declares the Toy specific subclass of TargetMachine.
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLVM_LIB_TARGET_TOY_TOYTARGETMACHINE_H
++#define LLVM_LIB_TARGET_TOY_TOYTARGETMACHINE_H
++
++#include "ToySubtarget.h"
++#include "llvm/Target/TargetLoweringObjectFile.h"
++#include "llvm/Target/TargetMachine.h"
++
++namespace llvm {
++
++class ToyTargetMachine : public LLVMTargetMachine {
++  std::unique_ptr<TargetLoweringObjectFile> TLOF;
++  mutable StringMap<std::unique_ptr<ToySubtarget>> SubtargetMap;
++
++public:
++  ToyTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
++                   StringRef FS, const TargetOptions &Options,
++                   std::optional<Reloc::Model> RM,
++                   std::optional<CodeModel::Model> CM, CodeGenOptLevel OL,
++                   bool JIT);
++  ~ToyTargetMachine() override;
++
++  TargetLoweringObjectFile *getObjFileLowering() const override {
++    return TLOF.get();
++  }
++  const ToySubtarget *getSubtargetImpl(const Function &) const override;
++
++  TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
++};
++
++} // end namespace llvm
++
++#endif // LLVM_LIB_TARGET_TOY_TOYTARGETMACHINE_H
+-- 
+2.34.1
+
