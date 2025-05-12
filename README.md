@@ -15,7 +15,7 @@ This example is inspired by:
 ```sh
 mkdir -p ${HOME}/Desktop/dockerVolumn
 cd ${HOME}/Desktop/dockerVolumn
-git clone -b llvm-toy --recursive https://github.com/Alwaysproblem/Toy-llvm-backend
+git clone --recursive https://github.com/Alwaysproblem/Toy-llvm-backend
 cd Toy-llvm-backend
 ```
 
