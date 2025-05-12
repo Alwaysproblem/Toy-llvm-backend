@@ -5,7 +5,7 @@ RUN apt update -y && \
         autotools-dev curl python3 python3-pip \
         libmpc-dev libmpfr-dev libgmp-dev gawk \
         build-essential bison flex texinfo gperf \
-        libtool patchutils bc zlib1g-dev \
+        libtool patchutils bc zlib1g-dev ccache \
         libexpat-dev ninja-build git \
     cmake libglib2.0-dev libslirp-dev && \
     apt install -y g++-12 gcc-12 && \
