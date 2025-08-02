@@ -1,0 +1,108 @@
+diff --git a/clang/include/clang/Basic/BuiltinsRISCV.td b/clang/include/clang/Basic/BuiltinsRISCV.td
+index 4cc89a8a9d8a..cb45062ebb96 100644
+--- a/clang/include/clang/Basic/BuiltinsRISCV.td
++++ b/clang/include/clang/Basic/BuiltinsRISCV.td
+@@ -146,3 +146,9 @@ let Features = "zihintntl", Attributes = [CustomTypeChecking] in {
+ def ntl_load : RISCVBuiltin<"void(...)">;
+ def ntl_store : RISCVBuiltin<"void(...)">;
+ } // Features = "zihintntl", Attributes = [CustomTypeChecking]
++
++//===----------------------------------------------------------------------===//
++// TISE builtin.
++//===----------------------------------------------------------------------===//
++
++def tise_neu_conv : RISCVBuiltin<"void *(void *, void *)">;
+diff --git a/llvm/include/llvm/IR/IntrinsicsRISCV.td b/llvm/include/llvm/IR/IntrinsicsRISCV.td
+index 2da154c30034..35e434a05fdd 100644
+--- a/llvm/include/llvm/IR/IntrinsicsRISCV.td
++++ b/llvm/include/llvm/IR/IntrinsicsRISCV.td
+@@ -1897,6 +1897,11 @@ let TargetPrefix = "riscv" in {
+   // Zvksh
+   def int_riscv_vsm3c    : RISCVBinaryAAXUnMaskedZvk<IsVI=1>;
+   def int_riscv_vsm3me   : RISCVBinaryAAXUnMasked;
++
++  def int_riscv_neu_conv :
++      ClangBuiltin<"__builtin_riscv_tise_neu_conv">,
++      Intrinsic<[llvm_ptr_ty], [llvm_ptr_ty, llvm_ptr_ty], [IntrNoMem]>;
++
+ } // TargetPrefix = "riscv"
+ 
+ // Vendor extensions
+diff --git a/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp b/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp
+index db949f3476e2..d32459aafad2 100644
+--- a/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp
+@@ -1771,6 +1771,14 @@ void RISCVDAGToDAGISel::Select(SDNode *Node) {
+     case Intrinsic::riscv_vsetvli:
+     case Intrinsic::riscv_vsetvlimax:
+       return selectVSETVLI(Node);
++    case Intrinsic::riscv_neu_conv: {
++      SDValue Src1 = Node->getOperand(1);
++      SDValue Src2 = Node->getOperand(2);
++
++      ReplaceNode(
++          Node, CurDAG->getMachineNode(RISCV::NEU_CONV, DL, VT, {Src1, Src2}));
++      return;
++    }
+     }
+     break;
+   }
+diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+index badbb4259974..58c81549df2d 100644
+--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+@@ -9349,6 +9349,14 @@ SDValue RISCVTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
+ 
+     return NewNode;
+   }
++  case Intrinsic::riscv_neu_conv: {
++    SDLoc DL(Op);
++    SmallVector<SDValue, 4> Operands{Op->op_values()};
++
++    MVT VT = getPointerTy(DAG.getDataLayout());
++
++    return DAG.getNode(ISD::INTRINSIC_WO_CHAIN, DL, VT, Operands);
++  }
+   }
+ 
+   return lowerVectorIntrinsicScalars(Op, DAG, Subtarget);
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.td b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+index 04054d2c3fee..f2431a02ec86 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.td
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+@@ -2087,3 +2087,35 @@ include "RISCVInstrInfoXwch.td"
+ //===----------------------------------------------------------------------===//
+ 
+ include "RISCVInstrGISel.td"
++
++
++//===----------------------------------------------------------------------===//
++// For NEU TISE
++//===----------------------------------------------------------------------===//
++
++// we assume that the NEU TISE is a custom instruction with the following
++// encoding:
++
++// | id      |   rs2  |   rs1  | NPU code |   rd    | opcode  |
++// | 0010000 | a2(12) | a1(11) |   010    | a0(10)  | 1111011 |
++
++// is `neu.conv $rd, $rs1, $rs2`
++
++// the instruction should be like:
++// | id      | rs2   | rs1   | NPU code | rd    | opcode  |
++// | 0010000 | 01100 | 01011 |   010    | 01010 | 1111011 |
++// --------------------------------------
++// 00100000 11000101 10100101 01111011
++// 0x20     0xc5     0xa5     0x7b
++// little endian (sorting bytes) so:
++// 0x7b 0xa5 0xc5 0x20
++
++let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
++class ALU_CUSTOM_rr<bits<7> funct7, bits<3> funct3, string opcodestr,
++             bit Commutable = 0>
++    : RVInstR<funct7, funct3, OPC_CUSTOM_3, (outs GPR:$rd), (ins GPR:$rs1, GPR:$rs2),
++              opcodestr, "$rd, $rs1, $rs2"> {
++  let isCommutable = Commutable;
++}
++
++def NEU_CONV : ALU_CUSTOM_rr<0b0010000, 0b010, "neu.conv", 0>;
